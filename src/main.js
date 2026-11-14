@@ -7,9 +7,13 @@ import { buildFlora } from './flora.js';
 import { buildCar } from './car.js';
 import { Vehicle } from './vehicle.js';
 import { Rival } from './ai.js';
+import { Controls } from './input.js';
+import { Net, randomRoom } from './net.js';
+import { RemoteCar } from './remote.js';
+import { Lobby } from './lobby.js';
 import { Post } from './post.js';
 import { Hud, fmtTime } from './hud.js';
-import { EngineAudio } from './audio.js';
+import { EngineAudio, RACE_TRACKS } from './audio.js';
 import { Colliders, clamp, lerp, smoothstep, wrapAngle, gTime, initNoise } from './util.js';
 
 const params = new URLSearchParams(location.search);
@@ -50,6 +54,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 15000);
 const post = new Post(renderer, Q);
 const audio = new EngineAudio();
+audio.playMusic(['title']); // starts with the first key press or click
 let drs = 1;
 
 function resize() {
@@ -63,38 +68,14 @@ function resize() {
 window.addEventListener('resize', resize);
 
 // ------------------------------------------------------------------ input
-const keys = new Set();
-const input = { throttle: 0, brake: 0, steer: 0, handbrake: false, lookBack: false, start: false };
+const controls = new Controls({
+  onWake: () => audio.start(),
+  onChange: () => refreshPrompts(),
+  onPad: (pad, on) => toast(`${pad.name} ${on ? 'CONNECTED' : 'DISCONNECTED'}`),
+});
+const input = controls.input;
 const IDLE = { throttle: 0, brake: 0, steer: 0, handbrake: true };
 let oneShot = {};
-window.addEventListener('keydown', (e) => {
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (!e.repeat) oneShot[e.code] = true;
-  keys.add(e.code);
-  audio.start();
-});
-window.addEventListener('keyup', (e) => keys.delete(e.code));
-window.addEventListener('blur', () => keys.clear());
-window.addEventListener('pointerdown', () => { audio.start(); oneShot.Enter = true; });
-let padPrev = {};
-function pollInput() {
-  const k = (c) => keys.has(c);
-  input.throttle = k('KeyW') || k('ArrowUp') ? 1 : 0;
-  input.brake = k('KeyS') || k('ArrowDown') ? 1 : 0;
-  input.steer = (k('KeyA') || k('ArrowLeft') ? 1 : 0) - (k('KeyD') || k('ArrowRight') ? 1 : 0);
-  input.handbrake = k('Space');
-  input.lookBack = k('KeyB');
-  const gp = navigator.getGamepads ? [...navigator.getGamepads()].find((g) => g && g.connected) : null;
-  if (gp) {
-    const b = (i) => (gp.buttons[i] ? gp.buttons[i].value : 0);
-    const ax = Math.abs(gp.axes[0]) > 0.1 ? gp.axes[0] : 0;
-    input.throttle = Math.max(input.throttle, b(7)); input.brake = Math.max(input.brake, b(6));
-    if (ax) input.steer = -Math.sign(ax) * Math.pow(Math.abs(ax), 1.6);
-    input.handbrake = input.handbrake || b(0) > 0.5; input.lookBack = input.lookBack || b(1) > 0.5;
-    const edge = (i, code) => { if (b(i) > 0.5 && !padPrev[i]) oneShot[code] = true; padPrev[i] = b(i) > 0.5; };
-    edge(9, 'Enter'); edge(3, 'KeyC'); edge(8, 'KeyR');
-  }
-}
 
 // ------------------------------------------------------------------ world
 let track, terrain, colliders, sky, flora, hud, player, rivals = [], playerCar, smoke;
@@ -164,8 +145,9 @@ async function build() {
   RIVALS.forEach((r) => {
     const car = buildCar(r.color); scene.add(car.group);
     const rv = new Rival(car, track, 0, 0, r.skill, r.name); rv.css = r.css;
-    rivals.push(rv);
+    rv.slot = rivals.length; rivals.push(rv);
   });
+  aiRivals = rivals.slice();
   smoke = new Smoke(); scene.add(smoke.points);
   hud = new Hud(track, rivals.length + 1);
   placeGrid();
@@ -173,26 +155,29 @@ async function build() {
   updateCamera(0.016); renderFrame();
   await tick('READY', 100);
   const ld = document.getElementById('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 900);
-  hud.show('title', true);
+  hud.show('title', true); refreshPrompts();
+  if (roomParam() && !params.has('demo')) openLobby(); // opened from an invite link
   if (params.has('demo')) { beginCountdown(); state.cd = 0.01; }
   const ff = parseFloat(params.get('ff') || '0');
   for (let t = 0; t < ff; t += 1 / 60) step(1 / 60);
-  window.__game = { state, player, rivals, track, terrain, renderer, scene, camera, post };
+  window.__game = { state, player, rivals, track, terrain, renderer, scene, camera, post, audio };
   last = performance.now();
   requestAnimationFrame(frame);
 }
 
 // ------------------------------------------------------------------ race state
 const state = { mode: 'title', cd: 0, cdShown: 4, time: 0, prog: 0, lastIdx: 0, cpN: 0, pos: 6, wrongT: 0, cine: 1, finishT: 0, lapStart: 0, bestLap: 0 };
+const sfx = { impact: 0, gear: 1, pos: 0, wrong: 0, race: 0 }; // edge detectors for sound effects
 const demo = params.has('demo');
 const gridSlot = (k) => ({ s: -(9 + Math.floor(k / 2) * 9), lat: k % 2 ? -2.4 : 2.4 });
 
 function placeGrid() {
-  rivals.forEach((r, k) => {
-    const g = gridSlot(k);
-    r.s = r.prog = g.s; r.lat = g.lat; r.v = 0; r.finishTime = 0; r.heading = 0; r.pose(0, 0);
+  rivals.forEach((r) => {
+    const g = gridSlot(r.slot);
+    if (r instanceof RemoteCar) { const f = track.sample(g.s); r.reset(f.x + f.lx * g.lat, f.z + f.lz * g.lat, Math.atan2(f.tx, f.tz), g.s); return; }
+    r.s = r.prog = g.s; r.lat = g.lat; r.v = 0; r.finishTime = 0; r.heading = 0; r.net = null; r.pose(0, 0);
   });
-  const g = gridSlot(rivals.length), f = track.sample(g.s);
+  const g = gridSlot(online ? online.slot : rivals.length), f = track.sample(g.s);
   player.place(f.x + f.lx * g.lat, f.z + f.lz * g.lat, Math.atan2(f.tx, f.tz));
   Object.assign(state, { time: 0, prog: g.s, lastIdx: player.idx, cpN: 0, pos: rivals.length + 1, wrongT: 0, finishT: 0, lapStart: 0, bestLap: 0 });
   camS.init = false;
@@ -201,12 +186,21 @@ function beginCountdown() {
   state.mode = 'countdown'; state.cd = 4.2; state.cdShown = 4;
   hud.show('title', false); hud.show('results', false); hud.show('hud', true);
   hud.set('split', '');
+  audio.play('ui_start');
+  audio.playMusic(RACE_TRACKS, sfx.race++); // each race opens on the next track, then the playlist rolls on
+  sfx.pos = 0; sfx.wrong = 0;
 }
 function restart() { placeGrid(); beginCountdown(); }
+function toTitle() {
+  placeGrid(); state.mode = 'title';
+  hud.show('results', false); hud.show('hud', false); hud.show('title', true);
+  audio.playMusic(['title']);
+}
 function resetToTrack() {
   const i = track.nearestGlobal(player.x, player.z);
   player.place(track.px[i], track.pz[i], Math.atan2(track.tx[i], track.tz[i]));
   state.lastIdx = player.idx;
+  audio.play('reset', { gain: 0.7 });
 }
 
 const auto = { throttle: 0, brake: 0, steer: 0, handbrake: false };
@@ -234,11 +228,12 @@ function collideRivals() {
       const vn = (player.vx * lx + player.vz * lz) * s;
       if (vn < 0) { player.vx -= lx * vn * s * 1.2; player.vz -= lz * vn * s * 1.2; player.impact = Math.max(player.impact, clamp(-vn * 0.15, 0.15, 0.8)); }
       r.lat = clamp(r.lat - s * penL * 0.5, -4, 4);
+      if (vn < 0) player.hit = 'car';
     } else {
       const s = Math.sign(al) || 1;
       player.x += r.fx * s * penA; player.z += r.fz * s * penA;
       const pv = player.vx * r.fx + player.vz * r.fz;
-      if (s < 0 && pv > r.v) { const k = (r.v * 0.96) / Math.max(pv, 0.1); player.vx *= k; player.vz *= k; r.v += 1.2; player.impact = Math.max(player.impact, 0.5); }
+      if (s < 0 && pv > r.v) { const k = (r.v * 0.96) / Math.max(pv, 0.1); player.vx *= k; player.vz *= k; r.v += 1.2; player.impact = Math.max(player.impact, 0.5); player.hit = 'car'; }
       else if (s > 0 && r.v > pv) r.v = Math.max(0, pv * 0.96);
     }
   }
@@ -246,28 +241,33 @@ function collideRivals() {
 
 function finishRace() {
   state.mode = 'finish'; state.finishT = 0;
+  if (online) net.send({ t: 'fin', d: r3(state.time) });
   const total = LAPS * track.length;
-  const rows = rivals.map((r) => ({ name: r.name, t: r.finishTime || state.time + (total - r.prog) / Math.max(r.v, 35), me: false }));
+  const rows = rivals.map((r) => ({ name: r.name, t: r.gone ? Infinity : r.finishTime || state.time + (total - r.prog) / Math.max(r.v, 35), me: false }));
   rows.push({ name: 'YOU', t: state.time, me: true });
   rows.sort((a, b) => a.t - b.t);
   const place = rows.findIndex((r) => r.me) + 1;
   state.pos = place;
   hud.banner('FINISH', fmtTime(state.time), 3);
-  setTimeout(() => { if (state.mode === 'finish') { hud.results(rows.map((r) => ({ name: r.name, me: r.me, time: fmtTime(r.t) })), place); hud.show('hud', false); } }, 2600);
+  audio.play('finish');
+  audio.playMusic(['results']);
+  setTimeout(() => { if (state.mode === 'finish') { hud.results(rows.map((r) => ({ name: r.name, me: r.me, time: Number.isFinite(r.t) ? fmtTime(r.t) : 'DNF' })), place); hud.show('hud', false); } }, 2600);
 }
 
 const proxy = { s: 0, lat: 0, v: 0 };
 function step(dt) {
   gTime.value += dt;
-  pollInput();
+  oneShot = controls.poll();
   const st = state;
   if (oneShot.KeyC) camS.mode = (camS.mode + 1) % 3;
   if (oneShot.KeyM) audio.toggleMute();
+  if (oneShot.KeyN) audio.toggleMusic();
   for (let n = 1; n <= 4; n++) if (oneShot['Digit' + n]) {
     const name = Object.keys(QUALITY)[n - 1];
     try { localStorage.setItem('satoyama.q', name); } catch { /* ignore */ }
     params.set('q', name); location.search = params.toString();
   }
+  if (online && oneShot.Escape && (st.mode === 'race' || st.mode === 'countdown')) { net.send({ t: 'fin', d: 0 }); openLobby(); oneShot.Escape = false; } // retire; the same press must not also leave the lobby
   const racing = st.mode === 'race';
   proxy.s = player.idx * track.ds; proxy.lat = player.lat; proxy.v = Math.max(0, player.vf);
   const others = [...rivals, proxy];
@@ -275,15 +275,20 @@ function step(dt) {
   if (st.mode === 'title') {
     player.update(dt, IDLE);
     if (oneShot.Enter || oneShot.Space) beginCountdown();
+    else if (oneShot.KeyO) openLobby();
     st.cine = 1;
+  } else if (st.mode === 'lobby') {
+    player.update(dt, IDLE);
+    st.cine = 1;
+    if (oneShot.Escape) closeLobby(); else if (oneShot.Enter) startOnline();
   } else if (st.mode === 'countdown') {
     st.cd -= dt;
     player.update(dt, IDLE);
     player.rpm = lerp(player.rpm, 1100 + input.throttle * 5200 + Math.sin(gTime.value * 30) * 60, Math.min(1, dt * 9));
     const n = Math.ceil(st.cd - 0.2);
-    if (n < st.cdShown && n <= 3 && n >= 1) { st.cdShown = n; hud.count(String(n)); }
+    if (n < st.cdShown && n <= 3 && n >= 1) { st.cdShown = n; hud.count(String(n)); audio.play('count'); }
     st.cine = 1 - smoothstep(0.6, 2.6, 4.2 - st.cd);
-    if (st.cd <= 0.2) { st.mode = 'race'; hud.count('GO!'); st.cine = 0; }
+    if (st.cd <= 0.2) { st.mode = 'race'; hud.count('GO!'); audio.play('go'); st.cine = 0; }
   } else if (racing) {
     st.time += dt;
     if (oneShot.KeyR) resetToTrack();
@@ -305,9 +310,10 @@ function step(dt) {
         const lt = st.time - st.lapStart; st.lapStart = st.time;
         if (!st.bestLap || lt < st.bestLap) st.bestLap = lt;
         hud.set('split', 'LAP ' + fmtTime(lt));
+        const finalLap = st.cpN / 4 === LAPS - 1;
         if (st.cpN >= LAPS * 4) finishRace();
-        else hud.banner(st.cpN / 4 === LAPS - 1 ? 'FINAL LAP' : 'LAP ' + (st.cpN / 4 + 1), fmtTime(lt));
-      } else hud.banner('CHECKPOINT', fmtTime(st.time), 1.8);
+        else { hud.banner(finalLap ? 'FINAL LAP' : 'LAP ' + (st.cpN / 4 + 1), fmtTime(lt)); audio.play(finalLap ? 'final_lap' : 'lap'); }
+      } else { hud.banner('CHECKPOINT', fmtTime(st.time), 1.8); audio.play('checkpoint', { gain: 0.8 }); }
     }
     const i = player.idx, along = Math.sin(player.heading) * track.tx[i] + Math.cos(player.heading) * track.tz[i];
     st.wrongT = along < -0.3 && player.vf > 4 ? st.wrongT + dt : 0;
@@ -318,9 +324,12 @@ function step(dt) {
     for (const r of rivals) { if (!r.finishTime && r.prog >= LAPS * track.length) r.finishTime = st.time + st.finishT; r.update(dt, others, st.prog, !r.finishTime, 0); }
     collideRivals();
     st.cine = Math.min(1, st.finishT / 1.5);
-    if (oneShot.Enter && st.finishT > 2.6) restart();
+    if (oneShot.Enter && st.finishT > 2.6) { if (online) openLobby(); else restart(); }
+    else if (oneShot.Escape && st.finishT > 2.6) { if (online) closeLobby(); else toTitle(); }
   }
-  if (st.mode === 'title' || st.mode === 'countdown') for (const r of rivals) r.pose(0, dt);
+  if (st.mode === 'title' || st.mode === 'lobby' || st.mode === 'countdown') for (const r of rivals) r.pose(0, dt);
+  netTick(dt);
+  if (racing && !demo) controls.feedback(dt, { impact: player.impact, slip: player.slip, offRoad: !player.onRoad, speed: player.speed });
 
   // tyre smoke / dust
   if (player.speed > 7 && (player.slip > 3.2 || !player.onRoad)) {
@@ -331,13 +340,163 @@ function step(dt) {
     }
   }
   smoke.update(dt);
-  audio.update(player.rpm, st.mode === 'race' && !demo ? input.throttle : 0.2, player.speed, player.slip, st.mode !== 'title');
+  audio.update(player.rpm, st.mode === 'race' && !demo ? input.throttle : 0.2, player.speed, player.slip, st.mode !== 'title' && st.mode !== 'lobby', player.onRoad);
+  // --- sound effect triggers ---
+  if (player.impact > sfx.impact + 0.05) { // a fresh hit: impact only decays between collisions
+    const k = player.impact, gain = clamp(0.45 + k * 0.7, 0, 1), rate = 0.92 + Math.random() * 0.16;
+    if (k > 0.55) audio.play('impact_heavy', { gain, rate, gap: 0.3 });
+    else if (player.hit === 'rail') audio.play('scrape', { gain, rate, gap: 0.45 });
+    else audio.play('impact_light', { gain, rate, gap: 0.15 });
+  }
+  sfx.impact = player.impact;
+  if (st.mode === 'race') {
+    if (player.gear > sfx.gear && input.throttle > 0.3) audio.play('shift', { gain: 0.5, rate: 0.95 + player.gear * 0.03 });
+    if (sfx.pos && st.pos !== sfx.pos) {
+      audio.play(st.pos < sfx.pos ? 'pass' : 'passed', { gain: 0.6 });
+      audio.play('whoosh', { gain: 0.5, gap: 0.4 });
+    }
+    sfx.pos = st.pos;
+    if (st.wrongT > 1) { sfx.wrong -= dt; if (sfx.wrong <= 0) { audio.play('wrong_way', { gain: 0.7 }); sfx.wrong = 2.2; } } else sfx.wrong = 0;
+  }
+  sfx.gear = player.gear;
   updateCamera(dt);
   hud.update(dt, {
     pos: st.pos, lap: Math.min(LAPS, Math.floor(st.cpN / 4) + 1), laps: LAPS, time: st.time, speed: player.vf, gear: player.gear, reverse: player.reverse,
     rpm: player.rpm, wrongWay: st.wrongT > 1, x: player.x, z: player.z, rivals: rivals.map((r) => ({ x: r.x, z: r.z, color: r.css })),
   });
   oneShot = {};
+}
+
+// ------------------------------------------------------------------ online
+// Each driver simulates their own car and sends its state through the relay (relay.mjs); everyone else's
+// car is drawn from those states. The room's host also simulates the AI cars that fill the empty grid slots.
+const WS_URL = params.get('server') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+let aiRivals = [], online = null; // online = { slot, cars: Map(id -> RemoteCar), ais, sendT, aiT } during a networked race
+const toastEl = document.getElementById('toast');
+let toastTimer = 0;
+function toast(text) {
+  toastEl.textContent = text; toastEl.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('on'), 2600);
+}
+
+const net = new Net(WS_URL, {
+  room: (room) => {
+    if (online) for (const [id, rc] of online.cars) if (!rc.gone && !room.players.some((p) => p.id === id)) { rc.retire(); toast(`${rc.name} LEFT`); }
+    renderLobby();
+  },
+  start: (m) => startGrid(m.order),
+  state: (id, d) => { const rc = online && online.cars.get(id); if (rc) rc.push(d, performance.now() / 1000); },
+  ai: (d) => {
+    if (!online) return;
+    const at = performance.now() / 1000;
+    online.ais.forEach((r, i) => { if (d[i]) r.net = { s: d[i][0], lat: d[i][1], v: d[i][2], at }; });
+  },
+  fin: (id, t) => {
+    const rc = online && online.cars.get(id); if (!rc) return;
+    if (t > 0) rc.finishTime = t; else { rc.retire(); toast(`${rc.name} RETIRED`); }
+  },
+  error: () => renderLobby(),
+  close: () => {
+    if (online) { for (const rc of online.cars.values()) if (!rc.finishTime) rc.retire(); toast('CONNECTION LOST — RACING ON ALONE'); }
+    renderLobby();
+  },
+});
+const lobby = new Lobby({
+  onJoin: (code) => joinRoom(code),
+  onName: () => { if (net.room && net.room.state === 'lobby') joinRoom(net.room.code); },
+  onStart: () => startOnline(),
+  onLeave: () => closeLobby(),
+});
+const roomParam = () => { const c = (params.get('room') || '').toUpperCase(); return /^[A-Z0-9]{3,8}$/.test(c) ? c : null; };
+
+function joinRoom(code) {
+  params.set('room', code); history.replaceState(null, '', '?' + params.toString()); // the address bar is the invite link
+  net.join(code, lobby.name); renderLobby();
+}
+function openLobby() {
+  soloGrid(); placeGrid(); state.mode = 'lobby';
+  hud.show('title', false); hud.show('results', false); hud.show('hud', false); lobby.show(true);
+  if (net.status === 'open' || net.status === 'connecting') renderLobby(); else joinRoom(roomParam() || randomRoom());
+}
+function closeLobby() {
+  net.leave(); lobby.show(false);
+  params.delete('room'); history.replaceState(null, '', params.toString() ? '?' + params.toString() : location.pathname);
+  soloGrid(); toTitle();
+}
+function startOnline() {
+  if (net.isHost && net.room.state === 'lobby') net.send({ t: 'start' });
+  else if (net.status === 'closed') joinRoom(roomParam() || randomRoom());
+  else if (net.error) joinRoom(randomRoom());
+}
+// Back to the single-player grid: five AI rivals and you.
+function soloGrid() {
+  online = null; rivals = aiRivals.slice();
+  rivals.forEach((r, k) => { r.slot = k; r.car.group.visible = true; });
+  if (window.__game) window.__game.rivals = rivals;
+  refreshPrompts();
+}
+// The host started a race. `order` is the starting order of the drivers; AI cars take the rows in front of them.
+function startGrid(order) {
+  if (!order.includes(net.id) || order.length > aiRivals.length + 1) return;
+  const nAi = aiRivals.length + 1 - order.length, cars = new Map();
+  rivals = aiRivals.slice(0, nAi);
+  rivals.forEach((r, k) => { r.slot = k; r.car.group.visible = true; });
+  const ais = rivals.slice();
+  let slot = 0, spare = nAi;
+  order.forEach((id, j) => {
+    if (id === net.id) { slot = nAi + j; return; }
+    const src = aiRivals[spare++], rc = new RemoteCar(src.car, player.world, net.nameOf(id), src.css); // drives the spare AI car
+    rc.slot = nAi + j; cars.set(id, rc); rivals.push(rc);
+  });
+  online = { slot, cars, ais, sendT: 0, aiT: 0 };
+  if (window.__game) window.__game.rivals = rivals;
+  lobby.show(false); refreshPrompts(); placeGrid(); beginCountdown();
+}
+
+const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100, r3 = (v) => Math.round(v * 1000) / 1000;
+function netTick(dt) {
+  const o = online; if (!o) return;
+  const now = performance.now() / 1000;
+  // Not the host: ease our copy of each AI car toward where the host says it is.
+  if (!net.isHost) for (const r of o.ais) {
+    const n = r.net; if (!n || now - n.at > 0.5) continue;
+    const e = n.s + n.v * (now - n.at) - r.s, k = Math.abs(e) > 30 ? 1 : Math.min(1, dt * 3);
+    r.s += e * k; r.prog += e * k; r.lat += (n.lat - r.lat) * k; r.v += (n.v - r.v) * k;
+  }
+  if (!net.open) return;
+  if ((o.sendT -= dt) <= 0) { // 20 states a second
+    o.sendT = Math.max(0, o.sendT + 0.05);
+    net.send({ t: 's', d: [r3(now), r2(player.x), r2(player.z), r3(player.heading), r2(player.vx), r2(player.vz), r3(player.steer), r1(state.prog), player.braking ? 1 : 0] });
+  }
+  if (net.isHost && o.ais.length && (o.aiT -= dt) <= 0) { o.aiT = 0.1; net.send({ t: 'ai', d: o.ais.map((r) => [r1(r.s), r2(r.lat), r2(r.v)]) }); }
+}
+
+function renderLobby() {
+  const r = net.room, p = controls.device === 'pad' && controls.pad, ok = p ? p.ok : 'ENTER', back = p ? p.back : 'ESC';
+  const canStart = !!r && net.isHost && r.state === 'lobby';
+  let status, hint = `${back} — LEAVE`;
+  if (net.error) { status = net.error === 'full' ? 'THAT ROOM IS FULL' : net.error === 'busy' ? 'THE SERVER IS FULL — TRY LATER' : 'COULD NOT JOIN THAT ROOM'; hint = `${ok} — NEW ROOM · ${hint}`; }
+  else if (net.status === 'closed') { status = 'NO CONNECTION TO THE RACE SERVER'; hint = `${ok} — RETRY · ${hint}`; }
+  else if (!r) status = 'CONNECTING…';
+  else if (r.state === 'race') status = 'RACE IN PROGRESS — YOU ARE IN THE NEXT ONE';
+  else { status = `${r.players.length} / ${aiRivals.length + 1} DRIVERS · AI FILLS THE EMPTY SLOTS`; hint = canStart ? `${ok} — START RACE · ${hint}` : `WAITING FOR THE HOST TO START · ${hint}`; }
+  lobby.render({ status, code: r ? r.code : roomParam(), players: r ? r.players : [], hostId: r ? r.host : 0, myId: net.id, canStart, hint });
+}
+
+// On-screen prompts follow the device last touched: keyboard text is whatever index.html says.
+const kbText = {};
+function refreshPrompts() {
+  const p = controls.device === 'pad' && controls.pad;
+  const set = (id, padText) => {
+    const el = document.getElementById(id); if (!el) return;
+    if (!(id in kbText)) kbText[id] = el.textContent;
+    el.textContent = padText || kbText[id];
+  };
+  set('help', p && `${p.gas} — GAS · ${p.brake} — BRAKE · LEFT STICK — STEER · ${p.hand} — HANDBRAKE · ${p.back} — LOOK BACK · ${p.cam} — CAMERA · ${p.reset} — RESET`);
+  set('titleGo', p && `PRESS ${p.ok} TO RACE · ${p.online} FOR ONLINE`);
+  set('titleKeys', p && `${p.name} · ${p.gas} GAS · ${p.brake} BRAKE · ${p.hand} HANDBRAKE · ${p.cam} CAMERA`);
+  set('resAgain', online ? `PRESS ${p ? p.ok : 'ENTER'} FOR THE LOBBY · ${p ? p.back : 'ESC'} TO LEAVE` : p && `PRESS ${p.ok} TO RACE AGAIN · ${p.back} FOR TITLE`);
+  if (state.mode === 'lobby') renderLobby();
 }
 
 // ------------------------------------------------------------------ camera

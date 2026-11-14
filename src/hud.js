@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const ORD = ['', 'ST', 'ND', 'RD', 'TH', 'TH', 'TH', 'TH', 'TH'];
 
 export function fmtTime(t) {
@@ -53,7 +54,7 @@ export class Hud {
   }
   results(rows, place) {
     this.el.resHead.innerHTML = place === 1 ? 'RACE <em>WON!</em>' : `FINISHED <em>${place}${ORD[place]}</em>`;
-    this.el.resRows.innerHTML = rows.map((r, i) => `<div class="row${r.me ? ' me' : ''}"><span><b>${i + 1}</b>${r.name}</span><span>${r.time}</span></div>`).join('');
+    this.el.resRows.innerHTML = rows.map((r, i) => `<div class="row${r.me ? ' me' : ''}"><span><b>${i + 1}</b>${esc(r.name)}</span><span>${r.time}</span></div>`).join('');
     this.show('results', true);
   }
 }

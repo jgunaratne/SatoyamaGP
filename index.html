@@ -71,6 +71,28 @@
   #results .row.me { background: var(--pink); }
   #results .row span:first-child b { display: inline-block; width: 5vh; color: var(--yellow); }
   #results .again { margin-top: 2.6vh; font-size: 2.2vh; letter-spacing: .3em; font-weight: 800; animation: blink 1.5s ease-in-out infinite; }
+
+  /* ---------- online lobby / toast ---------- */
+  #lobby { inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,8,14,.45); backdrop-filter: blur(3px); pointer-events: auto; user-select: auto; }
+  #lobby .card { width: min(78vh, 90vw); font-style: italic; text-shadow: none; }
+  #lobby h2 { margin: 0 0 .6vh; font-size: 8vh; font-weight: 900; line-height: .95; }
+  #lobby h2 em { color: var(--yellow); font-style: inherit; }
+  #lobby .sub { font-size: 2vh; letter-spacing: .22em; margin-bottom: 2vh; font-weight: 700; color: var(--pink); min-height: 2.4vh; }
+  #lobby .room { display: flex; align-items: center; gap: 1.4vw; font-size: 2.4vh; letter-spacing: .3em; font-weight: 800; margin-bottom: 1.6vh; }
+  #lobby .room b { font-size: 6vh; letter-spacing: .12em; color: var(--yellow); margin-right: auto; }
+  #lobby .row { display: flex; justify-content: space-between; font-size: 2.7vh; font-weight: 800; padding: .8vh 1.6vw; margin-bottom: .5vh; background: rgba(10,10,16,.72); }
+  #lobby .row.me { background: var(--pink); }
+  #lobby .row span:first-child b { display: inline-block; width: 5vh; color: var(--yellow); }
+  #lobby .form { display: flex; align-items: flex-end; gap: 1.2vw; margin-top: 1.8vh; }
+  #lobby label { display: flex; flex-direction: column; gap: .5vh; font-size: 1.5vh; letter-spacing: .24em; font-weight: 700; flex: 1; }
+  #lobby input, #lobby button { font: inherit; font-size: 2.3vh; font-weight: 800; letter-spacing: .12em; color: #fff; background: rgba(10,10,16,.72); border: 2px solid rgba(255,255,255,.35); padding: .8vh 1vw; text-transform: uppercase; min-width: 0; }
+  #lobby button { cursor: pointer; letter-spacing: .2em; white-space: nowrap; }
+  #lobby button.primary { background: var(--pink); border-color: var(--pink); flex: 1; }
+  #lobby input:focus-visible, #lobby button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  #lobby button:hover { border-color: #fff; }
+  #lobby .again { margin-top: 2.2vh; font-size: 2vh; letter-spacing: .26em; font-weight: 800; }
+  #toast { left: 0; right: 0; top: 9vh; text-align: center; font-size: 2.3vh; font-weight: 800; font-style: italic; letter-spacing: .22em; opacity: 0; transition: opacity .25s; z-index: 5; }
+  #toast.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -92,7 +114,7 @@
   <div id="banner" class="ui"><span id="bannerT"></span><small id="bannerS"></small></div>
   <div id="count" class="ui"></div>
   <div id="wrong" class="ui hidden"><span>WRONG WAY</span></div>
-  <div id="help" class="ui">W A S D / ARROWS — DRIVE &nbsp;·&nbsp; SPACE — HANDBRAKE &nbsp;·&nbsp; C — CAMERA &nbsp;·&nbsp; R — RESET &nbsp;·&nbsp; M — MUTE</div>
+  <div id="help" class="ui">W A S D / ARROWS — DRIVE &nbsp;·&nbsp; SPACE — HANDBRAKE &nbsp;·&nbsp; C — CAMERA &nbsp;·&nbsp; R — RESET &nbsp;·&nbsp; M — MUTE &nbsp;·&nbsp; N — MUSIC</div>
 </div>
 <div id="fps" class="ui"></div>
 
@@ -100,15 +122,29 @@
   <div class="kanji">里山グランプリ</div>
   <h1>SATOYAMA <em>GP</em></h1>
   <div class="lvl"><b>LEVEL 01</b>SAKURA VALLEY CIRCUIT</div>
-  <div class="go">PRESS ENTER TO RACE</div>
-  <div class="keys">W A S D / ARROWS · SPACE HANDBRAKE · C CAMERA · GAMEPAD SUPPORTED · 1–4 QUALITY</div>
+  <div class="go" id="titleGo">PRESS ENTER TO RACE · O FOR ONLINE</div>
+  <div class="keys" id="titleKeys">W A S D / ARROWS · SPACE HANDBRAKE · C CAMERA · 1–4 QUALITY · XBOX / PLAYSTATION CONTROLLER: PRESS ANY BUTTON</div>
 </div>
 
 <div id="results" class="ui hidden"><div class="card">
   <h2 id="resHead"></h2><div class="sub">SAKURA VALLEY CIRCUIT · RESULTS</div>
   <div id="resRows"></div>
-  <div class="again">PRESS ENTER TO RACE AGAIN</div>
+  <div class="again" id="resAgain">PRESS ENTER TO RACE AGAIN · ESC FOR TITLE</div>
 </div></div>
+
+<div id="lobby" class="ui panel hidden"><div class="card">
+  <h2>ONLINE <em>RACE</em></h2><div class="sub" id="lobbyStatus">CONNECTING…</div>
+  <div class="room">ROOM <b id="lobbyCode">––––</b><button id="lobbyCopy" type="button">COPY INVITE LINK</button></div>
+  <div id="lobbyRows"></div>
+  <div class="form">
+    <label>YOUR NAME <input id="lobbyName" maxlength="12" placeholder="DRIVER" autocomplete="off" spellcheck="false"></label>
+    <label>JOIN A ROOM <input id="lobbyJoin" maxlength="8" placeholder="CODE" autocomplete="off" spellcheck="false"></label>
+    <button id="lobbyJoinBtn" type="button">JOIN</button>
+  </div>
+  <div class="form"><button id="lobbyStart" type="button" class="primary hidden">START RACE</button><button id="lobbyLeave" type="button">LEAVE</button></div>
+  <div class="again" id="lobbyHint"></div>
+</div></div>
+<div id="toast" class="ui"></div>
 
 <div id="loading" class="ui">
   <div class="l1">SATOYAMA <em>GP</em></div>

@@ -18,6 +18,7 @@ export class Vehicle {
     this.idx = 0; this.lat = 0; this.onRoad = true;
     this.slip = 0; this.impact = 0; this.latAcc = 0; this.longAcc = 0;
     this.pitch = 0; this.roll = 0; this.spin = 0; this.braking = false; this.throttle = 0;
+    this.hit = ''; // what the last impact was against: 'rail' | 'solid' | 'car' (picks the sound)
   }
   get speed() { return Math.hypot(this.vx, this.vz); }
 
@@ -123,7 +124,7 @@ export class Vehicle {
           this.vx -= tr.lx[i] * vn * side * 1.25; this.vz -= tr.lz[i] * vn * side * 1.25;
           const loss = clamp(vn * 0.035, 0, 0.3);
           this.vx *= 1 - loss; this.vz *= 1 - loss;
-          this.impact = Math.max(this.impact, clamp(vn * 0.12, 0, 1));
+          this.impact = Math.max(this.impact, clamp(vn * 0.12, 0, 1)); this.hit = 'rail';
           // nudge the nose back along the rail
           const tHead = Math.atan2(tr.tx[i], tr.tz[i]);
           this.heading += wrapAngle(tHead - this.heading) * clamp(vn * 0.02, 0, 0.25);
@@ -140,7 +141,7 @@ export class Vehicle {
       if (vn < 0) {
         this.vx -= 1.3 * vn * nx; this.vz -= 1.3 * vn * nz;
         this.vx *= 0.72; this.vz *= 0.72;
-        this.impact = Math.max(this.impact, clamp(-vn * 0.1, 0.1, 1));
+        this.impact = Math.max(this.impact, clamp(-vn * 0.1, 0.1, 1)); this.hit = 'solid';
       }
     });
 
