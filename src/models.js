@@ -10,6 +10,55 @@ const BASE = import.meta.env.BASE_URL + 'models/';
 // Yaw (radians) that turns each raw model so its front faces +Z. TRELLIS orients meshes from the concept view.
 const YAW = { car_yellow: Math.PI, farmhouse_b: Math.PI / 2, torii: Math.PI / 2 };
 
+// Car bodies carry roughness/metalness per vertex (TEXCOORD_1), smoothed along the surface at build time.
+// Interpolating it on the GPU avoids the blotches a filtered texture gets from the fragmented TRELLIS UV atlas.
+function vertexGloss(geo, mat) {
+  // TEXCOORD_1 = (roughness, (wheelId + 0.9 * metalness) / 5): split it into a float gloss attribute and wheel ids
+  const src = geo.attributes.uv1, n = src.count, gloss = new Float32Array(n * 2), ids = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = src.getY(i) * 5, id = Math.min(4, Math.floor(v + 1e-3));
+    ids[i] = id; gloss[i * 2] = src.getX(i); gloss[i * 2 + 1] = Math.min(1, Math.max(0, (v - id) / 0.9));
+  }
+  geo.setAttribute('aGloss', new THREE.BufferAttribute(gloss, 2)); geo.deleteAttribute('uv1');
+  mat.roughness = 1; mat.metalness = 1; mat.roughnessMap = mat.metalnessMap = null;
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 aGloss;\nvarying vec2 vGloss;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGloss = aGloss;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vGloss;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(vGloss.x, 0.04, 1.);')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = clamp(vGloss.y, 0., 1.);');
+  };
+  mat.customProgramCacheKey = () => 'vertexGloss';
+  return ids;
+}
+
+// Split a car into body + four wheels using the per-vertex wheel ids. The parts share the car's vertex buffers
+// (one GPU upload) and differ only in their index lists. A triangle belongs to a wheel only if all three of its
+// vertices do; anything straddling the cut stays with the body, hidden behind the wheel.
+function splitWheels(geo, ids) {
+  const idx = geo.index.array, pos = geo.attributes.position, body = [], lists = [[], [], [], []];
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = ids[idx[t]];
+    (a && a === ids[idx[t + 1]] && a === ids[idx[t + 2]] ? lists[a - 1] : body).push(idx[t], idx[t + 1], idx[t + 2]);
+  }
+  if (lists.some((l) => l.length < 900)) return null;
+  const part = (list) => {
+    const g = new THREE.BufferGeometry();
+    for (const k of Object.keys(geo.attributes)) g.setAttribute(k, geo.attributes[k]);
+    g.setIndex(list); g.boundingBox = geo.boundingBox; g.boundingSphere = geo.boundingSphere;
+    return g;
+  };
+  const wheels = lists.map((list) => {
+    const b = new THREE.Box3(), v = new THREE.Vector3();
+    for (const i of list) b.expandByPoint(v.fromBufferAttribute(pos, i));
+    const size = b.getSize(new THREE.Vector3());
+    return { geo: part(list), center: b.getCenter(new THREE.Vector3()), radius: Math.max(size.y, size.z) / 2, width: size.x };
+  });
+  return { body: part(body), wheels };
+}
+
 export class Models {
   constructor() { this.index = {}; this.map = new Map(); }
 
@@ -60,6 +109,7 @@ export class Models {
         if (m.map) m.map.anisotropy = 8;
         if (kind !== 'car') { m.metalness = 0; m.roughness = Math.max(m.roughness, 0.9); }
         else if (!m.map) { m.metalness = 0.35; m.roughness = 0.4; }
+        else if (l.geo.attributes.uv1) l.parts = splitWheels(l.geo, vertexGloss(l.geo, m));
         m.transparent = false; m.depthWrite = true; m.side = m.map ? THREE.FrontSide : THREE.DoubleSide;
       }
       this.map.set(id, { id, kind, levels, size: bb.getSize(new THREE.Vector3()) });

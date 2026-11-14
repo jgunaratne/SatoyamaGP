@@ -137,6 +137,7 @@ function getShared() {
     body: buildBodyGeometry(), wheel: buildWheelGeometry(),
     glass: new THREE.MeshPhysicalMaterial({ color: 0x06090c, roughness: 0.04, metalness: 0.0, clearcoat: 1, envMapIntensity: 1.6 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6, metalness: 0.2 }),
+    liner: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95, side: THREE.DoubleSide }),
     tire: new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.88 }),
     rim: new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.22, metalness: 1 }),
     disc: new THREE.MeshStandardMaterial({ color: 0x4b4b4e, roughness: 0.45, metalness: 0.9 }),
@@ -154,10 +155,31 @@ function buildModelCar(model, S) {
   group.add(body);
   const s = (HALF_LEN * 2) / model.size.z, W = model.size.x * s, H = model.size.y * s;
   const lod = new THREE.LOD();
+  const wheels = [];
   model.levels.forEach((l, n) => {
-    const m = new THREE.Mesh(l.geo, l.mat); m.scale.setScalar(s); m.receiveShadow = true;
+    const m = new THREE.Mesh(l.parts ? l.parts.body : l.geo, l.mat); m.scale.setScalar(s); m.receiveShadow = true;
     m.castShadow = model.levels.length === 1 || n > 0;
-    lod.addLevel(m, n * 160);
+    if (!l.parts) { lod.addLevel(m, n * 160); return; }
+    // Full-detail level: the wheels are cut out of the scanned body so they can spin and steer.
+    const g0 = new THREE.Group(); g0.add(m);
+    for (const w of l.parts.wheels) {
+      const side = Math.sign(w.center.x) || 1, R = w.radius * s, Wd = w.width * s;
+      const pivot = new THREE.Group(); pivot.position.copy(w.center).multiplyScalar(s);
+      const spin = new THREE.Group(); pivot.add(spin);
+      const wm = new THREE.Mesh(w.geo, l.mat); wm.scale.setScalar(s); wm.position.copy(w.center).multiplyScalar(-s); wm.receiveShadow = true;
+      // dark barrel behind the spokes: closes the open inner side of the cut-out wheel
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.9, R * 0.9, Wd * 0.4, 28), S.dark);
+      drum.rotation.z = Math.PI / 2; drum.position.x = -side * Wd * 0.3;
+      spin.add(wm, drum);
+      // wheel-arch liner on the body: fills the hole the wheel left, seen as shadow in the gap around the tyre
+      const liner = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.07, R * 1.07, Wd * 0.85, 28, 1, true, -0.2 * Math.PI, 1.4 * Math.PI), S.liner);
+      liner.rotation.z = Math.PI / 2; liner.position.copy(pivot.position); liner.position.x -= side * Wd * 0.2;
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(R * 1.07, 28), S.liner);
+      cap.rotation.y = Math.PI / 2; cap.position.copy(pivot.position); cap.position.x -= side * Wd * 0.62;
+      g0.add(pivot, liner, cap);
+      wheels.push({ pivot, spin, front: w.center.z > 0 });
+    }
+    lod.addLevel(g0, 0);
   });
   body.add(lod);
   if (model.levels.length > 1) {   // the simplified level casts the shadow for the 190k-triangle body
@@ -172,8 +194,8 @@ function buildModelCar(model, S) {
     body.add(g);
   }
   Object.defineProperty(tail, 'emissiveIntensity', { set(v) { tail.opacity = v > 5 ? 0.8 : 0.0; }, get() { return 0; } });
-  const wheels = [];
-  for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+  // no separable wheels in this model (or a reduced level): keep inert pivots so the vehicle code has something to drive
+  if (!wheels.length) for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
     const pivot = new THREE.Group(); pivot.position.set(sx * WHEEL_X, WHEEL_R, sz * WHEEL_Z);
     const spin = new THREE.Group(); pivot.add(spin); group.add(pivot);
     wheels.push({ pivot, spin, front: sz > 0 });
