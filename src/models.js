@@ -8,7 +8,7 @@ import { gTime } from './util.js';
 const BASE = import.meta.env.BASE_URL + 'models/';
 
 // Yaw (radians) that turns each raw model so its front faces +Z. TRELLIS orients meshes from the concept view.
-const YAW = { farmhouse_b: Math.PI / 2, torii: Math.PI / 2 };
+const YAW = { car_yellow: Math.PI, farmhouse_b: Math.PI / 2, torii: Math.PI / 2 };
 
 export class Models {
   constructor() { this.index = {}; this.map = new Map(); }
@@ -113,43 +113,50 @@ export function scatter(model, items, opt = {}) {
     a.push(it);
   }
   const cells = [], cast = opt.cast ?? 1;
-  for (const arr of groups.values()) {
-    const box = new THREE.Box3(), meshes = [];
-    levels.forEach((l, n) => {
-      const m = new THREE.InstancedMesh(l.geo, l.mat, arr.length);
-      arr.forEach((it, i) => {
-        _d.position.set(it.x, it.y, it.z); _d.rotation.set(0, it.ry || 0, 0);
-        _d.scale.set(it.s || 1, it.sy || it.s || 1, it.s || 1); _d.updateMatrix();
-        m.setMatrixAt(i, _d.matrix);
-        if (it.c) m.setColorAt(i, _c.setRGB(it.c[0], it.c[1], it.c[2]));
-        if (n === 0) box.expandByPoint(_d.position);
+    const rad = Math.max(model.size.x, model.size.z) * 0.5;
+    for (const arr of groups.values()) {
+      const box = new THREE.Box3(), meshes = [];
+      levels.forEach((l, n) => {
+        const m = new THREE.InstancedMesh(l.geo, l.mat, arr.length);
+        arr.forEach((it, i) => {
+          const s = it.s || 1, sy = it.sy || s, r = rad * s;
+          _d.position.set(it.x, it.y, it.z); _d.rotation.set(0, it.ry || 0, 0);
+          _d.scale.set(s, sy, s); _d.updateMatrix();
+          m.setMatrixAt(i, _d.matrix);
+          if (it.c) m.setColorAt(i, _c.setRGB(it.c[0], it.c[1], it.c[2]));
+          if (n === 0) {
+            box.expandByPoint(_d.position.set(it.x - r, it.y, it.z - r));
+            box.expandByPoint(_d.position.set(it.x + r, it.y + model.size.y * sy, it.z + r));
+          }
+        });
+        // The full-detail level never renders into the shadow map; a level-1 proxy casts for it (see below).
+        m.castShadow = n < cast && !(n === 0 && levels.length > 1); m.receiveShadow = opt.receive ?? true;
+        m.computeBoundingSphere(); m.visible = false;
+        meshes.push(m); out.add(m);
       });
-      // The full-detail level never renders into the shadow map; a level-1 proxy casts for it (see below).
-      m.castShadow = n < cast && !(n === 0 && levels.length > 1); m.receiveShadow = opt.receive ?? true;
-      m.computeBoundingSphere(); m.visible = false;
-      meshes.push(m); out.add(m);
-    });
-    let proxy = null;
-    if (cast > 0 && levels.length > 1) {
-      proxy = new THREE.InstancedMesh(levels[1].geo, SHADOW_ONLY, arr.length);
-      proxy.instanceMatrix = meshes[1].instanceMatrix;
-      proxy.castShadow = true; proxy.receiveShadow = false; proxy.visible = false;
-      proxy.boundingSphere = meshes[1].boundingSphere;
-      out.add(proxy);
+      let proxy = null;
+      if (cast > 0 && levels.length > 1) {
+        proxy = new THREE.InstancedMesh(levels[1].geo, SHADOW_ONLY, arr.length);
+        proxy.instanceMatrix = meshes[1].instanceMatrix;
+        proxy.castShadow = true; proxy.receiveShadow = false; proxy.visible = false;
+        proxy.boundingSphere = meshes[1].boundingSphere;
+        out.add(proxy);
+      }
+      cells.push({ box, meshes, proxy, lvl: -1, hidden: false });
     }
-    cells.push({ box, meshes, proxy });
+    lodSets.push({ cells, dist, far: opt.far || Infinity });
+    return out;
   }
-  lodSets.push({ cells, dist, far: opt.far || Infinity });
-  return out;
-}
 
 export function updateLods(cam, scale = 1) {
   for (const set of lodSets) {
     for (const c of set.cells) {
       const d = c.box.distanceToPoint(cam) / scale;
       let lvl = 0;
-      while (lvl < set.dist.length && d > set.dist[lvl]) lvl++;
-      const hide = d > set.far;
+      // Hysteresis keeps cells from chattering across an LOD threshold as the car corners or adaptive scale shifts.
+      while (lvl < set.dist.length && d > set.dist[lvl] * (c.lvl >= 0 && lvl >= c.lvl ? 1.08 : 0.96)) lvl++;
+      const hide = d > set.far * (c.hidden ? 0.95 : 1.05);
+      c.lvl = lvl; c.hidden = hide;
       for (let n = 0; n < c.meshes.length; n++) c.meshes[n].visible = !hide && n === lvl;
       if (c.proxy) c.proxy.visible = !hide && lvl === 0;
     }

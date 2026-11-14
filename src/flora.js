@@ -136,7 +136,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
           return { ...it, s: sc, sy: sc * (it.sy / it.s), c: [0.8 + it.c[0] * 0.25, 0.8 + it.c[1] * 0.25, 0.8 + it.c[2] * 0.25] };
         });
         // the forest starts 170 m from the road: it only ever needs the two cheapest levels
-        group.add(scatter(m, sub, { cell: 128, first: 2, dist: [220], cast: 0, receive: false }));
+        group.add(scatter(m, sub, { cell: 96, first: 2, dist: [520], cast: 0, receive: false }));
       });
     } else {
       const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
@@ -176,7 +176,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         const v = Math.floor(rng() * sak.length), k = 0.94 + rng() * 0.1;
         lists[v].push({ ...it, s: (10 * it.s) / sak[v].size.y, c: green ? null : [k, k * (0.97 + rng() * 0.05), k] });
       }
-      const o = { cell: 40, dist: [45, 180, 600], cast: 2 };
+      const o = { cell: 32, dist: [180, 420, 900], cast: 2 };
       sak.forEach((m, v) => group.add(scatter(m, lists[v], o)));
       if (zel) group.add(scatter(zel[0], greens, o));
     } else {
@@ -194,7 +194,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: ((10 + rng() * 4)) / bam[0].size.y });
         colliders.add(x, z, 0.8);
       }
-      group.add(scatter(bam[0], list, { cell: 40, dist: [45, 180, 600], cast: 2 }));
+      group.add(scatter(bam[0], list, { cell: 32, dist: [180, 420, 900], cast: 2 }));
     }
     if (pine) {
       const list = [];
@@ -204,7 +204,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: (5 + rng() * 1.5) / pine[0].size.y });
         colliders.add(x, z, 0.5);
       }
-      group.add(scatter(pine[0], list, { cell: 40, dist: [45, 180, 600], cast: 2 }));
+      group.add(scatter(pine[0], list, { cell: 32, dist: [180, 420, 900], cast: 2 }));
     }
   }
 
@@ -226,7 +226,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
       const s = (k.h * (1 + (rng() - 0.5) * 2 * k.hv)) / k.m[0].size.y, t = 0.85 + rng() * 0.3;
       k.list.push({ x, y: Math.max(sh, terrain.heightAt(x, z)) - 0.04 * k.h, z, ry: rng() * 6.28, s, c: [t, t * (0.95 + rng() * 0.1), t * 0.95] });
     }
-    for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 16, dist: [12, 60], far: 240, cast: 1, sway: k.sway }));
+    for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 20, dist: [45, 150], far: 420, cast: 1, sway: k.sway }));
 
     const rocks = M('boulder_a', 'boulder_b');
     if (rocks) {
@@ -237,7 +237,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         lists[v].push({ x, y: terrain.heightAt(x, z) - h * 0.12, z, ry: rng() * 6.28, s: h / rocks[v].size.y });
         colliders.add(x, z, h * 0.6);
       }
-      rocks.forEach((m, v) => group.add(scatter(m, lists[v], { cell: 48, dist: [30, 140], far: 600, cast: 2 })));
+      rocks.forEach((m, v) => group.add(scatter(m, lists[v], { cell: 36, dist: [130, 340], far: 800, cast: 2 })));
     }
   }
 

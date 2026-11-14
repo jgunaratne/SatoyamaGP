@@ -3,10 +3,18 @@
 // Every sample is optional: a missing file is simply silent.
 const BASE = import.meta.env.BASE_URL + 'audio/';
 const SHOTS = ['count', 'go', 'ui_start', 'checkpoint', 'lap', 'final_lap', 'finish', 'impact_light', 'impact_heavy', 'scrape',
-  'shift', 'pass', 'passed', 'whoosh', 'wrong_way', 'reset'];
+  'shift', 'whoosh', 'wrong_way', 'reset'];
 const LOOPS = ['skid', 'gravel', 'ambience'];
+// Sampled engine (tools/generate_engine.py): steady-rpm recordings, cross-faded by rpm and pitched to it.
+// ENGINE layers are on-throttle, lowest rpm first; engine_off is the overrun layer for a closed throttle.
+const ENGINE = ['idle', 'low', 'mid', 'high'], ENGINE_OFF = 'off';
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 export const RACE_TRACKS = ['race1', 'race2', 'race3'];
 const MUSIC_VOL = 0.42, SFX_VOL = 0.85;
+const ENGINE_VOL = 0.5;   // overall level of the sampled engine against music and effects
+const TRAFFIC_VOL = 0.45;  // other cars' engines, at their loudest (alongside)
+const GEAR_TOP = [0, 17, 28, 40, 53, 66, 82]; // m/s at redline per gear, as in vehicle.js: gives other cars an rpm
+const ENGINE_PITCH = 1;   // < 1 plays every layer deeper than its true rpm (0.85 is a noticeably bassier car)
 const pref = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v === '1'; } catch { return def; } };
 const savePref = (k, v) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch { /* ignore */ } };
 
@@ -78,7 +86,8 @@ export class EngineAudio {
     this.buffers = {}; this.loops = {}; this.last = {};
     // Fetch the samples up front; they are decoded once a gesture has created the context.
     this.raw = {};
-    for (const n of [...SHOTS, ...LOOPS]) {
+    this.engMeta = fetch(`${BASE}sfx/engine.json`).then((r) => r.json()).catch(() => null); // measured rpm per layer
+    for (const n of [...SHOTS, ...LOOPS, ...ENGINE.map((e) => 'engine_' + e), 'engine_' + ENGINE_OFF]) {
       this.raw[n] = fetch(`${BASE}sfx/${n}.mp3`).then((r) => (r.ok && !/html/.test(r.headers.get('content-type') || '') ? r.arrayBuffer() : null)).catch(() => null);
     }
   }
@@ -104,6 +113,7 @@ export class EngineAudio {
 
     this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = SFX_VOL; this.sfxBus.connect(this.out);
     for (const [n, p] of Object.entries(this.raw)) {
+      if (n.startsWith('engine_')) continue;
       p.then((ab) => (ab ? ctx.decodeAudioData(ab) : null)).then((b) => {
         if (!b) return;
         if (!LOOPS.includes(n)) { this.buffers[n] = b; return; }
@@ -114,6 +124,26 @@ export class EngineAudio {
     }
     this.music.attach(ctx, this.out);
     this.music.gesture();
+    this.loadEngine(ctx);
+  }
+  // Starts every engine loop silent; update() then mixes and pitches them. Until (or unless) all the
+  // on-throttle layers have decoded, the oscillator engine above stays in charge.
+  async loadEngine(ctx) {
+    const meta = await this.engMeta; if (!meta) return;
+    const decode = async (n) => { const ab = await this.raw['engine_' + n]; return ab && meta[n] ? ctx.decodeAudioData(ab).catch(() => null) : null; };
+    const bufs = await Promise.all([...ENGINE, ENGINE_OFF].map(decode));
+    if (bufs.slice(0, ENGINE.length).some((b) => !b)) return;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000; lp.Q.value = 0.7;
+    const gain = ctx.createGain(); gain.gain.value = 0; lp.connect(gain); gain.connect(this.out);
+    const layer = (b, n) => {
+      if (!b) return null;
+      const src = ctx.createBufferSource(); src.buffer = b; src.loop = true;
+      const g = ctx.createGain(); g.gain.value = 0; src.connect(g); g.connect(lp);
+      src.start(0, Math.random() * b.duration); // de-correlate the loops
+      return { src, g, rpm: meta[n] };
+    };
+    const all = bufs.map((b, k) => layer(b, [...ENGINE, ENGINE_OFF][k]));
+    this.engine = { layers: all.slice(0, ENGINE.length).sort((a, b) => a.rpm - b.rpm), off: all[ENGINE.length], lp, gain };
   }
   toggleMute() {
     this.muted = !this.muted;
@@ -123,12 +153,53 @@ export class EngineAudio {
   playMusic(list, i = 0) { this.music.play(list, i); }
 
   // One-shot effect. `gap` (s) drops retriggers that arrive too soon after the last one.
-  play(name, { gain = 1, rate = 1, gap = 0.05 } = {}) {
+  play(name, { gain = 1, rate = 1, gap = 0.05, pan = 0 } = {}) {
     const b = this.buffers[name]; if (!b || this.ctx.state !== 'running') return;
     const t = this.ctx.currentTime; if (t - (this.last[name] || -9) < gap) return;
     this.last[name] = t;
     const s = this.ctx.createBufferSource(); s.buffer = b; s.playbackRate.value = rate;
-    const g = this.ctx.createGain(); g.gain.value = gain; s.connect(g); g.connect(this.sfxBus); s.start();
+    const g = this.ctx.createGain(); g.gain.value = gain; s.connect(g);
+    if (pan && this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); g.connect(p); p.connect(this.sfxBus); }
+    else g.connect(this.sfxBus);
+    s.start();
+  }
+
+  // One engine voice for another car: the two upper engine recordings, then distance low-pass, level and pan.
+  trafficVoice() {
+    const ctx = this.ctx, g = ctx.createGain(); g.gain.value = 0;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000; lp.connect(g);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { g.connect(pan); pan.connect(this.out); } else g.connect(this.out);
+    const layers = this.engine.layers.slice(-2).map((l) => {
+      const src = ctx.createBufferSource(); src.buffer = l.src.buffer; src.loop = true;
+      const lg = ctx.createGain(); lg.gain.value = 0; src.connect(lg); lg.connect(lp);
+      src.start(0, Math.random() * src.buffer.duration);
+      return { src, g: lg, rpm: l.rpm };
+    });
+    return { g, lp, pan, layers, tune: 0.93 + Math.random() * 0.14 }; // no two cars are tuned alike
+  }
+  // Other cars as heard from the player's seat. cars[i] = { d: distance m, right / fwd: offset in the player's
+  // frame m, closing: approach speed m/s (negative when pulling away), v: its speed m/s } or null.
+  // Passing is then simply what it is on a road: the other engine swells, sweeps across and drops in pitch.
+  updateTraffic(cars, active) {
+    if (!this.engine) return;
+    const t = this.ctx.currentTime, V = this.traffic || (this.traffic = []);
+    for (let i = 0; i < Math.max(cars.length, V.length); i++) {
+      const c = cars[i];
+      if (!V[i]) { if (!c || !active || c.d > 110) continue; V[i] = this.trafficVoice(); }
+      const v = V[i];
+      if (!c || !active || c.d > 110) { v.g.gain.setTargetAtTime(0, t, 0.1); continue; }
+      let gear = 1; while (gear < 6 && c.v > GEAR_TOP[gear] * 0.97) gear++;
+      const doppler = clamp(343 / (343 - c.closing), 0.8, 1.25);
+      const rpm = (1100 + 6500 * c.v / GEAR_TOP[gear]) * v.tune * doppler * ENGINE_PITCH;
+      const [a, b] = v.layers, x = clamp(Math.log(rpm / a.rpm) / Math.log(b.rpm / a.rpm), 0, 1) * Math.PI / 2;
+      a.g.gain.setTargetAtTime(Math.cos(x), t, 0.06); b.g.gain.setTargetAtTime(Math.sin(x), t, 0.06);
+      for (const l of v.layers) l.src.playbackRate.setTargetAtTime(clamp(rpm / l.rpm, 0.35, 2.5), t, 0.04);
+      // inverse-square falloff from 7 m; air and the car body in between eat the highs with distance
+      v.g.gain.setTargetAtTime(TRAFFIC_VOL * 49 / (49 + c.d * c.d), t, 0.05);
+      v.lp.frequency.setTargetAtTime((700 + 9000 / (1 + c.d / 22)) * (c.fwd < 0 ? 0.75 : 1), t, 0.08);
+      if (v.pan) v.pan.pan.setTargetAtTime(clamp(c.right / (Math.abs(c.right) + Math.abs(c.fwd) * 0.5 + 3), -0.9, 0.9), t, 0.05);
+    }
   }
 
   update(rpm, throttle, speed, slip, active, onRoad = true) {
@@ -136,7 +207,27 @@ export class EngineAudio {
     const t = this.ctx.currentTime, f = (rpm / 60) * 2;
     for (const { o, mul } of this.oscs) o.frequency.setTargetAtTime(f * mul, t, 0.03);
     this.lp.frequency.setTargetAtTime(500 + rpm * 0.25 + throttle * 1500, t, 0.05);
-    this.master.gain.setTargetAtTime(!active ? 0 : 0.2 + throttle * 0.14, t, 0.08);
+    this.master.gain.setTargetAtTime(!active || this.engine ? 0 : 0.2 + throttle * 0.14, t, 0.08);
+    const E = this.engine;
+    if (E) {
+      const L = E.layers, n = L.length;
+      let i = 0; while (i < n - 2 && rpm > L[i + 1].rpm) i++;
+      // equal-power cross-fade between the two recordings that bracket this rpm (log scale: pitch is ratios)
+      const x = clamp(Math.log(rpm / L[i].rpm) / Math.log(L[i + 1].rpm / L[i].rpm), 0, 1) * Math.PI / 2;
+      const load = 0.3 + 0.7 * throttle;
+      for (let k = 0; k < n; k++) {
+        const w = k === i ? Math.cos(x) : k === i + 1 ? Math.sin(x) : 0;
+        L[k].src.playbackRate.setTargetAtTime(clamp(ENGINE_PITCH * rpm / L[k].rpm, 0.4, 2.5), t, 0.03);
+        L[k].g.gain.setTargetAtTime(w * load, t, 0.06);
+      }
+      if (E.off) { // engine braking: grows as the throttle closes, fades out towards idle
+        E.off.src.playbackRate.setTargetAtTime(clamp(ENGINE_PITCH * rpm / E.off.rpm, 0.4, 2.5), t, 0.03);
+        E.off.g.gain.setTargetAtTime((1 - throttle) * 0.75 * clamp((rpm - 1300) / 1500, 0, 1), t, 0.09);
+      }
+      // a closed throttle muffles the intake and exhaust; opening it lets the rasp through
+      E.lp.frequency.setTargetAtTime(1100 + rpm * 0.45 + throttle * (2500 + rpm * 1.3), t, 0.07);
+      E.gain.gain.setTargetAtTime(active ? ENGINE_VOL * (0.5 + 0.22 * clamp((rpm - 1000) / 6500, 0, 1)) : 0, t, 0.08);
+    }
     this.wind.g.gain.setTargetAtTime(Math.min(0.5, (speed / 80) ** 2 * 0.5), t, 0.1);
     this.wind.bp.frequency.setTargetAtTime(350 + speed * 14, t, 0.1);
     const skid = speed > 5 && onRoad ? Math.max(0, slip - 2.2) : 0, L = this.loops;

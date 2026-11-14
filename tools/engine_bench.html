@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Engine sound bench: audition the game's engine mixer without loading the world.
+     npm run dev, then open /tools/engine_bench.html -->
+<meta charset="utf-8">
+<title>Satoyama GP — engine bench</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; background: #14141c; color: #eee; max-width: 640px; margin: 6vh auto; padding: 0 20px; }
+  label { display: block; margin: 18px 0 4px; } input[type=range] { width: 100%; }
+  button { font: inherit; padding: 8px 16px; margin: 0 8px 8px 0; cursor: pointer; }
+  pre { background: #0008; padding: 12px; min-height: 5em; }
+</style>
+<h1>Engine bench</h1>
+<p><button id="start">Start audio</button><button id="sweep">Rev sweep</button><button id="drive">Drive through the gears</button></p>
+<label>RPM <b id="rpmV">1100</b><input id="rpm" type="range" min="800" max="7800" value="1100"></label>
+<label>Throttle <b id="thrV">0.2</b><input id="thr" type="range" min="0" max="1" step="0.01" value="0.2"></label>
+<pre id="info">Press “Start audio”.</pre>
+<script type="module">
+  import { EngineAudio } from '../src/audio.js';
+  const $ = (id) => document.getElementById(id);
+  const audio = (window.audio = new EngineAudio());
+  let script = null, t0 = 0;
+  $('start').onclick = () => audio.start();
+  const GEAR_TOP = [0, 17, 28, 40, 53, 66, 82];
+  const scripts = {
+    sweep: (t) => (t > 9 ? null : t < 6 ? { rpm: 1000 * 7.8 ** (t / 6), thr: 1 } : { rpm: 7800 - (t - 6) * 2200, thr: 0 }),
+    drive: (t) => { // full-throttle run with the same gearing as vehicle.js, then lift off
+      if (t > 16) return null;
+      const v = Math.min(70, t * 6), lift = t > 12.5;
+      let g = 1; while (g < 6 && v > GEAR_TOP[g] * 0.97) g++;
+      return { rpm: 1100 + 6500 * (lift ? Math.max(0.2, 1 - (t - 12.5) * 0.25) * v / GEAR_TOP[g] : v / GEAR_TOP[g]), thr: lift ? 0 : 1 };
+    },
+  };
+  for (const k of Object.keys(scripts)) $(k).onclick = () => { audio.start(); script = scripts[k]; t0 = performance.now(); };
+  let rpm = 1100;
+  (function frame() {
+    requestAnimationFrame(frame);
+    const s = script && script((performance.now() - t0) / 1000);
+    if (s) { $('rpm').value = s.rpm; $('thr').value = s.thr; } else script = null;
+    rpm += ($('rpm').value - rpm) * 0.2; // the vehicle model eases rpm the same way
+    const thr = +$('thr').value;
+    $('rpmV').textContent = Math.round(rpm); $('thrV').textContent = thr.toFixed(2);
+    audio.update(rpm, thr, 0, 0, true, true);
+    const E = audio.engine;
+    $('info').textContent = !audio.ctx ? 'Press “Start audio”.' : !E ? 'Samples not loaded — synthesised fallback engine is playing.'
+      : E.layers.map((l) => `${String(l.rpm).padStart(5)} rpm  gain ${l.g.gain.value.toFixed(2)}  rate ${l.src.playbackRate.value.toFixed(2)}`).join('\n')
+        + (E.off ? `\noverrun    gain ${E.off.g.gain.value.toFixed(2)}  rate ${E.off.src.playbackRate.value.toFixed(2)}` : '')
+        + `\nlow-pass ${Math.round(E.lp.frequency.value)} Hz`;
+  })();
+</script>

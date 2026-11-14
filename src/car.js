@@ -157,7 +157,7 @@ function buildModelCar(model, S) {
   model.levels.forEach((l, n) => {
     const m = new THREE.Mesh(l.geo, l.mat); m.scale.setScalar(s); m.receiveShadow = true;
     m.castShadow = model.levels.length === 1 || n > 0;
-    lod.addLevel(m, n * 45);
+    lod.addLevel(m, n * 160);
   });
   body.add(lod);
   if (model.levels.length > 1) {   // the simplified level casts the shadow for the 190k-triangle body

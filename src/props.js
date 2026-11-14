@@ -208,7 +208,7 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
     const m = houseM[v];
     if (m) {
       const sc = FOOT[v] / Math.max(m.size.x, m.size.z);
-      group.add(scatter(m, lists[v].map((it) => ({ ...it, y: it.y - 0.12, s: sc })), { cell: 60, dist: [70, 340], cast: 2 }));
+      group.add(scatter(m, lists[v].map((it) => ({ ...it, y: it.y - 0.12, s: sc })), { cell: 36, dist: [280, 680], cast: 2 }));
     } else for (const [geo, mat] of set) add(geo, mat, lists[v]);
   });
 
@@ -222,7 +222,7 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
       items.push({ x, y: y.h, z, ry: y.ry + Math.PI / 2 + (rng() - 0.5) * 0.7, s: sc });
       colliders.add(x, z, 1.7);
     }
-    group.add(scatter(truckM, items, { cell: 60, dist: [40, 200], cast: 2 }));
+    group.add(scatter(truckM, items, { cell: 36, dist: [180, 460], cast: 2 }));
   }
 
   // ----- torii gate over the start/finish line -----
@@ -279,7 +279,7 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
       colliders.add(f.x, f.z, 0.5);
     }
     const lanM = M('lantern');
-    if (lanM) group.add(scatter(lanM, list.map((it) => ({ ...it, s: 2.45 / lanM.size.y })), { cell: 30, dist: [40, 160], cast: 2 }));
+    if (lanM) group.add(scatter(lanM, list.map((it) => ({ ...it, s: 2.45 / lanM.size.y })), { cell: 24, dist: [160, 400], cast: 2 }));
     else group.add(instanced(stoneGeo, mats.stone, list), instanced(glowGeo, glow, list, false));
   }
 
@@ -292,7 +292,7 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
       items.push({ x: f.x, y: terrain.heightAt(f.x, f.z) - 0.05, z: f.z, ry: Math.atan2(-track.lx[i], -track.lz[i]), s: 2.3 / hokM.size.y });
       colliders.add(f.x, f.z, 0.9);
     }
-    group.add(scatter(hokM, items, { cell: 30, dist: [40, 180], cast: 2 }));
+    group.add(scatter(hokM, items, { cell: 24, dist: [170, 420], cast: 2 }));
   }
 
   // ----- utility poles + sagging wires -----

@@ -29,6 +29,7 @@ export function padInfo(id) {
 }
 
 const typing = (e) => { const t = e.target; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
+const modalOpen = () => { const g = document.getElementById('gfx'); return !!g && !g.classList.contains('hidden'); };
 
 export class Controls {
   // onWake: first user gesture (lets audio start). onChange: the active device or pad changed.
@@ -43,9 +44,12 @@ export class Controls {
     this.onChange = onChange; this.onPad = onPad; this.onWake = onWake;
 
     window.addEventListener('keydown', (e) => {
-      if (typing(e)) return;
+      if (typing(e) || modalOpen()) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-      if (!e.repeat) this.shots[e.code] = true;
+      if (!e.repeat) {
+        this.shots[e.code] = true;
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.shots.Enter = true; this.shots.ReturnKey = true; }
+      }
       this.keys.add(e.code);
       this.use('keyboard');
       onWake();
@@ -101,7 +105,12 @@ export class Controls {
       input.handbrake = input.handbrake || b(B.A) > 0.5;
       input.lookBack = input.lookBack || b(B.B) > 0.5;
       const edge = (i, ...codes) => { const on = b(i) > 0.5; if (on && !this.prev[i]) for (const c of codes) this.shots[c] = true; this.prev[i] = on; };
-      edge(B.START, 'Enter'); edge(B.A, 'Enter'); edge(B.B, 'Escape'); edge(B.X, 'KeyO'); edge(B.Y, 'KeyC'); edge(B.BACK, 'KeyR');
+      edge(B.START, 'Pause'); edge(B.A, 'Enter'); edge(B.B, 'Escape'); edge(B.X, 'KeyO'); edge(B.Y, 'KeyC'); edge(B.BACK, 'KeyR');
+      edge(B.UP, 'ArrowUp'); edge(B.DOWN, 'ArrowDown'); edge(B.LEFT, 'ArrowLeft'); edge(B.RIGHT, 'ArrowRight');
+      const ay = gp.axes[1] || 0;
+      const stickEdge = (k, on, code) => { if (on && !this.prev[k]) this.shots[code] = true; this.prev[k] = on; };
+      stickEdge('su', ay < -0.55, 'ArrowUp'); stickEdge('sd', ay > 0.55, 'ArrowDown');
+      stickEdge('sl', ax < -0.55, 'ArrowLeft'); stickEdge('sr', ax > 0.55, 'ArrowRight');
     }
     const shots = this.shots; this.shots = {};
     return shots;

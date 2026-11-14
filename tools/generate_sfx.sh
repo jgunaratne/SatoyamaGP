@@ -21,20 +21,16 @@ mkdir -p "${OUT}"
 # name | kind | duration seconds | prompt
 #   shot: trimmed of leading/trailing silence and loudness-normalised
 #   loop: tail cross-faded into the head so it repeats seamlessly, mono
+# checkpoint, final_lap and finish are layered stingers: see tools/generate_stingers.py
 SFX=(
   "count|shot|0.5|single short electronic race start light beep, clean mid-pitch sine tone, dry, no reverb"
   "go|shot|1.0|single long bright high-pitched electronic race start beep, green light go signal, clean, dry"
   "ui_start|shot|0.8|arcade racing game menu confirm, bright synth chime with a fast rising whoosh, punchy"
-  "checkpoint|shot|0.8|arcade racing checkpoint passed, bright two-note rising electronic chime, short, clean"
   "lap|shot|1.2|arcade racing lap completed jingle, bright three-note rising synth bell arpeggio, short, clean"
-  "final_lap|shot|1.6|arcade racing final lap alert, urgent fast double bell ring with a rising synth sting, exciting, short"
-  "finish|shot|4.0|race finish line: air horn blast and a small outdoor crowd cheering and clapping, celebratory, fades out"
   "impact_light|shot|0.5|car bumper bump, dull plastic and metal thud, light fender tap, dry, close, short"
   "impact_heavy|shot|1.0|car crash into a metal guardrail, heavy metal crunch with a short glass and debris rattle, dry, close, punchy"
   "scrape|shot|0.9|car body scraping along a metal guardrail at speed, harsh grinding metal screech, short, dry"
   "shift|shot|0.5|sports car sequential gear shift, quick mechanical clunk with a short turbo blow-off hiss, dry, close"
-  "pass|shot|0.5|quick bright rising synth blip, arcade position gained, short, clean"
-  "passed|shot|0.5|quick falling low synth blip, arcade position lost, short, clean"
   "whoosh|shot|0.7|fast car passing by very close, quick doppler air whoosh, short, dry"
   "wrong_way|shot|1.2|arcade warning alarm, three fast harsh descending buzzer beeps, short, dry"
   "reset|shot|0.9|soft magical teleport whoosh with a gentle sparkle, respawn sound, short"
