@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Dev-only contact sheet of the TRELLIS.2 models: /tools/viewer.html?lod=1&ids=car_red,sakura_a  (red = +X, blue = +Z) -->
+<!-- Dev-only contact sheet of the TRELLIS.2 models: /tools/viewer.html?lod=1&ids=car_red,sakura_a&zoom=2  (red = +X, blue = +Z) -->
 <html><body style="margin:0;background:#888"><canvas id="c"></canvas>
 <script type="module">
 import * as THREE from 'three';
@@ -15,7 +15,11 @@ const models = await new Models().load(lod, () => {}, ids);
 const list = [...models.map.values()], cols = Math.ceil(Math.sqrt(list.length * 1.7)), rows = Math.ceil(list.length / cols);
 list.forEach((m, i) => {
   const g = new THREE.Group(), s = 1 / Math.max(m.size.x, m.size.y, m.size.z);
-  const mesh = new THREE.Mesh(m.levels[0].geo, m.levels[0].mat); mesh.scale.setScalar(s); g.add(mesh);
+  const parts = q.has('explode') && m.levels[0].parts;
+  if (parts) {   // ?explode: show the wheels pulled out of the body, to check the wheel cut
+    const b = new THREE.Mesh(parts.body, m.levels[0].mat); b.scale.setScalar(s); g.add(b);
+    for (const w of parts.wheels) { const wm = new THREE.Mesh(w.geo, m.levels[0].mat); wm.scale.setScalar(s); wm.position.x = Math.sign(w.center.x) * 0.22; g.add(wm); }
+  } else { const mesh = new THREE.Mesh(m.levels[0].geo, m.levels[0].mat); mesh.scale.setScalar(s); g.add(mesh); }
   g.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0.01, 0), 0.75, 0x0044ff, 0.12, 0.08));
   g.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.01, 0), 0.75, 0xff0000, 0.12, 0.08));
   g.position.set((i % cols) * 1.5, 0, Math.floor(i / cols) * 1.7);
@@ -27,6 +31,7 @@ const cam = new THREE.OrthographicCamera(-w / 2 - 0.2, w / 2 + 0.2, (w / 2 + 0.2
 const ctr = new THREE.Vector3(w / 2 - 0.75, 0.4, d / 2 - 0.85);
 const dir = view === 'side' ? new THREE.Vector3(1, 0.05, 0.001) : view === 'top' ? new THREE.Vector3(0, 1, 0.001) : new THREE.Vector3(0.7, 0.55, 1);
 cam.position.copy(ctr).addScaledVector(dir.normalize(), 10); cam.lookAt(ctr);
+cam.zoom = +(q.get('zoom') || 1); cam.updateProjectionMatrix();
 r.render(scene, cam);
 window.__game = { renderer: r };
 </script></body></html>
