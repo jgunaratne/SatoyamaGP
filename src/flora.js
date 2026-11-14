@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, fbm, vnoise, gTime } from './util.js';
 import { ROAD_HALF } from './track.js';
 import { SHOULDER_W, SHOULDER_DROP } from './terrain.js';
+import { scatter } from './models.js';
 
 const rng = mulberry32(4242);
 
@@ -81,19 +82,23 @@ function blossomGeometry(detail) {
   return mergeGeometries(parts);
 }
 
+// A tuft of curved, tapering blades (4 segments each) with per-blade length, lean and colour variation.
 function tuftGeometry() {
   const pos = [], col = [], nrm = [], idx = [];
-  const N = 5;
+  const N = 11, SEG = 4;
   for (let b = 0; b < N; b++) {
-    const a = (b / N) * Math.PI * 2 + rng(), h = 0.38 + rng() * 0.3, w = 0.045, lean = 0.12 + rng() * 0.2;
-    const ca = Math.cos(a), sa = Math.sin(a), bx = ca * 0.1, bz = sa * 0.1, v = pos.length / 3;
-    pos.push(bx - sa * w, 0, bz + ca * w, bx + sa * w, 0, bz - ca * w,
-      bx + ca * lean * 0.4 - sa * w * 0.7, h * 0.55, bz + sa * lean * 0.4 + ca * w * 0.7,
-      bx + ca * lean * 0.4 + sa * w * 0.7, h * 0.55, bz + sa * lean * 0.4 - ca * w * 0.7,
-      bx + ca * lean, h, bz + sa * lean);
-    col.push(0.03, 0.06, 0.012, 0.03, 0.06, 0.012, 0.07, 0.125, 0.025, 0.07, 0.125, 0.025, 0.13, 0.2, 0.045);
-    for (let i = 0; i < 5; i++) nrm.push(0, 1, 0);
-    idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2, v + 2, v + 3, v + 4);
+    const a = (b / N) * Math.PI * 2 + rng() * 1.3, h = 0.3 + rng() * 0.42, w = 0.022 + rng() * 0.012, lean = 0.08 + rng() * 0.3;
+    const ca = Math.cos(a), sa = Math.sin(a), r0 = rng() * 0.13, bx = ca * r0, bz = sa * r0, v = pos.length / 3;
+    const dry = rng() < 0.18 ? 0.5 + rng() * 0.5 : 0, tw = (rng() - 0.5) * 0.9;
+    for (let k = 0; k <= SEG; k++) {
+      const t = k / SEG, out = lean * t * t, y = h * (t - 0.18 * t * t), ww = w * (1 - t * 0.92);
+      const px = bx + ca * out, pz = bz + sa * out, c2 = Math.cos(a + tw * t), s2 = Math.sin(a + tw * t);
+      const g = 0.055 + 0.15 * t, cr = (0.022 + 0.085 * t) * (1 + dry * 1.6), cg = g * (1 - dry * 0.25), cb = (0.01 + 0.035 * t) * (1 - dry * 0.3);
+      if (k < SEG) { pos.push(px - s2 * ww, y, pz + c2 * ww, px + s2 * ww, y, pz - c2 * ww); col.push(cr, cg, cb, cr, cg, cb); nrm.push(0, 1, 0, 0, 1, 0); }
+      else { pos.push(px, y, pz); col.push(cr, cg, cb); nrm.push(0, 1, 0); }
+    }
+    for (let k = 0; k < SEG - 1; k++) { const o = v + k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+    const o = v + (SEG - 1) * 2; idx.push(o, o + 1, o + 2);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -103,7 +108,8 @@ function tuftGeometry() {
   return g;
 }
 
-export function buildFlora(scene, track, terrain, colliders, yardTrees, q) {
+export function buildFlora(scene, track, terrain, colliders, props, q, models = null) {
+  const yardTrees = props.yardTrees, M = (...ids) => (models ? models.all(...ids) : null);
   const group = new THREE.Group();
   scene.add(group);
   const N = track.N;
@@ -122,8 +128,20 @@ export function buildFlora(scene, track, terrain, colliders, yardTrees, q) {
       const s = 0.75 + rng() * 0.75, k = 0.75 + rng() * 0.5;
       items.push({ x, y: terrain.heightAt(x, z) - 0.4, z, ry: rng() * 6.28, s, sy: s * (0.9 + rng() * 0.4), c: [k, k * (0.9 + rng() * 0.2), k * 0.9] });
     }
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
-    group.add(chunked(cedarGeometry(), mat, items, 384, false));
+    const cedars = q.models === 'full' ? M('cedar_a', 'cedar_b') : null;
+    if (cedars) {
+      cedars.forEach((m, v) => {
+        const sub = items.filter((_, i) => i % cedars.length === v).map((it) => {
+          const sc = (21 * it.s) / m.size.y;
+          return { ...it, s: sc, sy: sc * (it.sy / it.s), c: [0.8 + it.c[0] * 0.25, 0.8 + it.c[1] * 0.25, 0.8 + it.c[2] * 0.25] };
+        });
+        // the forest starts 170 m from the road: it only ever needs the two cheapest levels
+        group.add(scatter(m, sub, { cell: 128, first: 2, dist: [220], cast: 0, receive: false }));
+      });
+    } else {
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
+      group.add(chunked(cedarGeometry(), mat, items, 384, false));
+    }
   }
 
   // ----- sakura avenues + farmyard trees -----
@@ -149,13 +167,83 @@ export function buildFlora(scene, track, terrain, colliders, yardTrees, q) {
       items.push({ x: t.x, y: t.y - 0.1, z: t.z, ry: rng() * 6.28, s, c: t.green ? [0.2 + rng() * 0.1, 0.62, 0.22] : pinks[0] });
       colliders.add(t.x, t.z, 0.5);
     }
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-    group.add(chunked(blossomGeometry(q.lowq ? 1 : 2), mat, items, 256, true));
+    const sak = M('sakura_a', 'sakura_b', 'sakura_c'), zel = M('zelkova');
+    if (sak) {
+      const lists = sak.map(() => []), greens = [];
+      for (const it of items) {
+        const green = it.c[1] > 0.5 && it.c[0] < 0.5;
+        if (green && zel) { greens.push({ ...it, s: (11 * it.s) / zel[0].size.y, c: null }); continue; }
+        const v = Math.floor(rng() * sak.length), k = 0.94 + rng() * 0.1;
+        lists[v].push({ ...it, s: (10 * it.s) / sak[v].size.y, c: green ? null : [k, k * (0.97 + rng() * 0.05), k] });
+      }
+      const o = { cell: 40, dist: [45, 180, 600], cast: 2 };
+      sak.forEach((m, v) => group.add(scatter(m, lists[v], o)));
+      if (zel) group.add(scatter(zel[0], greens, o));
+    } else {
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+      group.add(chunked(blossomGeometry(q.lowq ? 1 : 2), mat, items, 256, true));
+    }
+
+    // bamboo groves and garden pines around the farmyards
+    const bam = M('bamboo'), pine = M('pine');
+    if (bam) {
+      const list = [];
+      for (const y of props.yards) for (let n = 0; n < 3; n++) {
+        if (n && rng() < 0.35) continue;
+        const x = y.x - (13 + n * 2.6 - rng() * 1.5) * y.f, z = y.z - (9.5 - n * 3.4 + rng() * 1.5) * y.f;
+        list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: ((10 + rng() * 4)) / bam[0].size.y });
+        colliders.add(x, z, 0.8);
+      }
+      group.add(scatter(bam[0], list, { cell: 40, dist: [45, 180, 600], cast: 2 }));
+    }
+    if (pine) {
+      const list = [];
+      for (const y of props.yards) {
+        if (rng() < 0.4) continue;
+        const x = y.x + 14.5 * y.f, z = y.z + 7 * y.f;
+        list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: (5 + rng() * 1.5) / pine[0].size.y });
+        colliders.add(x, z, 0.5);
+      }
+      group.add(scatter(pine[0], list, { cell: 40, dist: [45, 180, 600], cast: 2 }));
+    }
+  }
+
+  // ----- TRELLIS.2 verge vegetation: grass clumps, pampas, ferns, rapeseed, shrubs, boulders -----
+  {
+    const kinds = [
+      ['grass_a', 0.36, 0.95, 0.4, 0.13], ['grass_b', 0.14, 1.75, 0.5, 0.1], ['fern', 0.2, 0.6, 0.3, 0.06],
+      ['nanohana', 0.14, 1.05, 0.3, 0.09], ['shrub', 0.1, 1.5, 0.5, 0], ['azalea', 0.06, 1.1, 0.3, 0],
+    ].map(([id, share, h, hv, sway]) => ({ m: M(id), share, h, hv, sway, list: [] })).filter((k) => k.m);
+    const total = kinds.reduce((a, k) => a + k.share, 0), want = Math.round(9000 * q.density);
+    for (let n = 0; n < want && kinds.length; n++) {
+      let r = rng() * total, k = kinds[0];
+      for (const kk of kinds) { if (r < kk.share) { k = kk; break; } r -= kk.share; }
+      const big = k.sway === 0 || k.h > 1.5;
+      const i = Math.floor(rng() * N), sd = rng() < 0.5 ? 1 : -1;
+      const lat = ROAD_HALF + (big ? 5.2 : 1.9) + Math.pow(rng(), 1.3) * (big ? 9 : 10.5), al = (rng() - 0.5) * 2;
+      const x = track.px[i] + track.lx[i] * lat * sd + track.tx[i] * al, z = track.pz[i] + track.lz[i] * lat * sd + track.tz[i] * al;
+      const sh = lat < ROAD_HALF + SHOULDER_W ? track.py[i] - SHOULDER_DROP * (lat - ROAD_HALF) / SHOULDER_W : -1e9;
+      const s = (k.h * (1 + (rng() - 0.5) * 2 * k.hv)) / k.m[0].size.y, t = 0.85 + rng() * 0.3;
+      k.list.push({ x, y: Math.max(sh, terrain.heightAt(x, z)) - 0.04 * k.h, z, ry: rng() * 6.28, s, c: [t, t * (0.95 + rng() * 0.1), t * 0.95] });
+    }
+    for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 16, dist: [12, 60], far: 240, cast: 1, sway: k.sway }));
+
+    const rocks = M('boulder_a', 'boulder_b');
+    if (rocks) {
+      const lists = rocks.map(() => []);
+      for (let i = 30; i < N - 20; i += 23 + Math.floor(rng() * 30)) {
+        const sd = rng() < 0.5 ? 1 : -1, lat = sd * (ROAD_HALF + 6.5 + rng() * 9), v = Math.floor(rng() * rocks.length);
+        const x = track.px[i] + track.lx[i] * lat, z = track.pz[i] + track.lz[i] * lat, h = 0.7 + rng() * 1.1;
+        lists[v].push({ x, y: terrain.heightAt(x, z) - h * 0.12, z, ry: rng() * 6.28, s: h / rocks[v].size.y });
+        colliders.add(x, z, h * 0.6);
+      }
+      rocks.forEach((m, v) => group.add(scatter(m, lists[v], { cell: 48, dist: [30, 140], far: 600, cast: 2 })));
+    }
   }
 
   // ----- roadside grass tufts swaying in the wind -----
   {
-    const items = [], want = Math.round(60000 * q.density * (q.lowq ? 0.5 : 1));
+    const items = [], want = Math.round(65000 * q.density * (q.lowq ? 0.5 : 1));
     for (let n = 0; n < want; n++) {
       const i = Math.floor(rng() * N), sd = rng() < 0.5 ? 1 : -1;
       const lat = ROAD_HALF + 1.5 + Math.pow(rng(), 1.4) * 9.5;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SHADOW_ONLY } from './models.js';
 
 export const WHEEL_R = 0.33, WHEEL_X = 0.83, WHEEL_Z = 1.38;
 const HALF_LEN = 2.3;
@@ -127,7 +128,12 @@ function getShared() {
   const g = sc.getContext('2d'), gr = g.createRadialGradient(64, 64, 8, 64, 64, 64);
   gr.addColorStop(0, 'rgba(0,0,0,.7)'); gr.addColorStop(0.6, 'rgba(0,0,0,.32)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const gc = document.createElement('canvas'); gc.width = 128; gc.height = 64;
+  const gg = gc.getContext('2d'), ggr = gg.createRadialGradient(64, 32, 2, 64, 32, 62);
+  ggr.addColorStop(0, 'rgba(255,255,255,1)'); ggr.addColorStop(0.35, 'rgba(255,255,255,.45)'); ggr.addColorStop(1, 'rgba(255,255,255,0)');
+  gg.fillStyle = ggr; gg.save(); gg.translate(0, 16); gg.scale(1, 0.5); gg.fillRect(0, 0, 128, 64); gg.restore();
   shared = {
+    glow: new THREE.CanvasTexture(gc),
     body: buildBodyGeometry(), wheel: buildWheelGeometry(),
     glass: new THREE.MeshPhysicalMaterial({ color: 0x06090c, roughness: 0.04, metalness: 0.0, clearcoat: 1, envMapIntensity: 1.6 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6, metalness: 0.2 }),
@@ -142,8 +148,45 @@ function getShared() {
   return shared;
 }
 
-export function buildCar(color) {
+// Car built around a TRELLIS.2 scanned-style body (wheels are part of the mesh), scaled to the physics wheelbase.
+function buildModelCar(model, S) {
+  const group = new THREE.Group(), body = new THREE.Group();
+  group.add(body);
+  const s = (HALF_LEN * 2) / model.size.z, W = model.size.x * s, H = model.size.y * s;
+  const lod = new THREE.LOD();
+  model.levels.forEach((l, n) => {
+    const m = new THREE.Mesh(l.geo, l.mat); m.scale.setScalar(s); m.receiveShadow = true;
+    m.castShadow = model.levels.length === 1 || n > 0;
+    lod.addLevel(m, n * 45);
+  });
+  body.add(lod);
+  if (model.levels.length > 1) {   // the simplified level casts the shadow for the 190k-triangle body
+    const p = new THREE.Mesh(model.levels[1].geo, SHADOW_ONLY); p.scale.setScalar(s); p.castShadow = true;
+    lod.levels[1].object.castShadow = false; body.add(p);
+  }
+  // brake lights: soft additive glows over the model's tail lamps
+  const tail = new THREE.MeshBasicMaterial({ map: S.glow, color: 0xd81004, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+  for (const sx of [1, -1]) {
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), tail);
+    g.position.set(sx * W * 0.31, H * 0.58, -HALF_LEN - 0.03); g.rotation.y = Math.PI;
+    body.add(g);
+  }
+  Object.defineProperty(tail, 'emissiveIntensity', { set(v) { tail.opacity = v > 5 ? 0.8 : 0.0; }, get() { return 0; } });
+  const wheels = [];
+  for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * WHEEL_X, WHEEL_R, sz * WHEEL_Z);
+    const spin = new THREE.Group(); pivot.add(spin); group.add(pivot);
+    wheels.push({ pivot, spin, front: sz > 0 });
+  }
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.5, 5.0), S.blob);
+  blob.rotation.x = -Math.PI / 2; blob.position.y = 0.035; blob.renderOrder = 2;
+  group.add(blob);
+  return { group, body, wheels, tail, paint: model.levels[0].mat };
+}
+
+export function buildCar(color, model = null) {
   const S = getShared();
+  if (model) return buildModelCar(model, S);
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
   const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.34, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.25 });

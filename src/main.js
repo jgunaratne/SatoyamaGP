@@ -10,22 +10,24 @@ import { Rival } from './ai.js';
 import { Post } from './post.js';
 import { Hud, fmtTime } from './hud.js';
 import { EngineAudio } from './audio.js';
+import { Models, updateLods } from './models.js';
+import { initSettings, resolveQuality, storedPreset, clearCustom } from './settings.js';
 import { Colliders, clamp, lerp, smoothstep, wrapAngle, gTime, initNoise } from './util.js';
 
 const params = new URLSearchParams(location.search);
 const QUALITY = {
-  low: { scale: 0.6, msaa: 0, shadow: 1024, dofTaps: 8, blurSamples: 2, density: 0.22, lowq: true, dpr: 1 },
-  medium: { scale: 0.8, msaa: 0, shadow: 2048, dofTaps: 22, blurSamples: 4, density: 0.6, lowq: false, dpr: 1 },
-  high: { scale: 1, msaa: 4, shadow: 2048, dofTaps: 40, blurSamples: 6, density: 1, lowq: false, dpr: 1.5 },
-  ultra: { scale: 1, msaa: 4, shadow: 4096, dofTaps: 64, blurSamples: 8, density: 1.4, lowq: false, dpr: 2 },
+  low: { models: 'lite', adaptive: true, lod: 0.45, scale: 0.6, msaa: 0, shadow: 1024, dofTaps: 8, blurSamples: 2, density: 0.22, lowq: true, dpr: 1 },
+  medium: { models: 'full', adaptive: true, lod: 0.7, scale: 0.8, msaa: 0, shadow: 2048, dofTaps: 22, blurSamples: 4, density: 0.6, lowq: false, dpr: 1 },
+  high: { models: 'full', adaptive: true, lod: 1, scale: 1, msaa: 4, shadow: 2048, dofTaps: 40, blurSamples: 6, density: 1, lowq: false, dpr: 1.5 },
+  ultra: { models: 'full', adaptive: true, lod: 1.6, scale: 1, msaa: 4, shadow: 4096, dofTaps: 64, blurSamples: 8, density: 1.4, lowq: false, dpr: 2 },
 };
 const LAPS = 2;
 const RIVALS = [
-  { name: 'AKIRA', color: 0xf2f2ee, css: '#f2f2ee', skill: 1.0 },
-  { name: 'MIKA', color: 0x1456d8, css: '#3b7bff', skill: 0.82 },
-  { name: 'KENJI', color: 0xf0b400, css: '#f0b400', skill: 0.66 },
-  { name: 'YUKI', color: 0x16171a, css: '#666b75', skill: 0.5 },
-  { name: 'HANA', color: 0x0f8f5a, css: '#1fc47e', skill: 0.34 },
+  { name: 'AKIRA', model: 'car_white', color: 0xf2f2ee, css: '#f2f2ee', skill: 1.0 },
+  { name: 'MIKA', model: 'car_blue', color: 0x1456d8, css: '#3b7bff', skill: 0.82 },
+  { name: 'KENJI', model: 'car_yellow', color: 0xf0b400, css: '#f0b400', skill: 0.66 },
+  { name: 'YUKI', model: 'car_black', color: 0x16171a, css: '#666b75', skill: 0.5 },
+  { name: 'HANA', model: 'car_green', color: 0x0f8f5a, css: '#1fc47e', skill: 0.34 },
 ];
 
 const canvas = document.getElementById('c');
@@ -34,23 +36,25 @@ renderer.toneMapping = THREE.NoToneMapping;
 renderer.shadowMap.enabled = true;
 
 
-function detectQuality() {
-  const want = params.get('q') || (() => { try { return localStorage.getItem('satoyama.q'); } catch { return null; } })();
-  if (QUALITY[want]) return want;
+// What this GPU can comfortably run, judged from its renderer string.
+function gpuInfo() {
   const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info');
   const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
-  if (/V3D|llvmpipe|SwiftShader|softpipe|Mali|PowerVR|Adreno \(TM\) [1-5]/i.test(name)) return 'low';
-  if (/Intel|Adreno|Apple GPU/i.test(name) && !/Arc|Iris\(R\) Xe/i.test(name)) return 'medium';
-  return 'high';
+  let rec = 'high';
+  if (/V3D|llvmpipe|SwiftShader|softpipe|Mali|PowerVR|Adreno \(TM\) [1-5]/i.test(name)) rec = 'low';
+  else if (/Intel|Adreno|Apple GPU/i.test(name) && !/Arc|Iris\(R\) Xe/i.test(name)) rec = 'medium';
+  return { name: name.replace(/^ANGLE \((.*)\)$/, '$1').split(',').slice(0, 2).join(',').trim(), rec };
 }
-const qName = detectQuality(), Q = QUALITY[qName];
+const gpu = gpuInfo();
+const wantQ = params.get('q') || storedPreset();
+const qAuto = !QUALITY[wantQ], qName = qAuto ? gpu.rec : wantQ, Q = resolveQuality(QUALITY[qName], params);
 renderer.shadowMap.type = Q.lowq ? THREE.BasicShadowMap : THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 15000);
 const post = new Post(renderer, Q);
 const audio = new EngineAudio();
-let drs = 1;
+let drs = 1, lodK = 1;   // dynamic resolution scale, dynamic LOD-distance scale
 
 function resize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.dpr));
@@ -98,6 +102,8 @@ function pollInput() {
 
 // ------------------------------------------------------------------ world
 let track, terrain, colliders, sky, flora, hud, player, rivals = [], playerCar, smoke;
+const models = new Models();
+let settingsUI = null;
 const loadBar = document.getElementById('loadBar'), loadText = document.getElementById('loadText');
 const tick = (label, pct) => { loadText.textContent = label; loadBar.style.width = pct + '%'; return new Promise((r) => setTimeout(r, 30)); };
 
@@ -149,20 +155,24 @@ async function build() {
   orientSun(h0);
   sky = buildSky(scene, renderer, Q.lowq, { x: track.px[0], z: track.pz[0], heading: h0 });
   sky.sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+  await tick('LOADING 3D MODELS', 46);
+  if (Q.models !== 'off' && !params.has('nomodels')) await models.load(Q.models === 'lite' ? 1 : 0, (f) => { loadBar.style.width = 46 + f * 6 + '%'; });
   await tick('BUILDING VILLAGES', 52);
-  const props = buildProps(scene, track, terrain, colliders);
+  const props = buildProps(scene, track, terrain, colliders, models, Q);
   await tick('FLOODING RICE PADDIES', 62);
   const tmat = terrain.buildMaterial(Q.lowq);
   scene.add(terrain.buildMesh(), buildShoulders(track, tmat), buildRoad(track), buildGuardrails(track));
   await tick('PLANTING SAKURA', 74);
-  flora = buildFlora(scene, track, terrain, colliders, props.yardTrees, Q);
+  flora = buildFlora(scene, track, terrain, colliders, props, Q, models);
   await tick('TUNING ENGINES', 88);
   const world = { track, terrain, colliders };
-  playerCar = buildCar(0xc2101c);
+  // REDUCED keeps the cheap procedural cars: the clustered LODs are meant for distance, not for the hero object
+  const carModel = (id) => (Q.models === 'full' ? models.get(id) : null);
+  playerCar = buildCar(0xc2101c, carModel('car_red'));
   scene.add(playerCar.group);
   player = new Vehicle(playerCar, world);
   RIVALS.forEach((r) => {
-    const car = buildCar(r.color); scene.add(car.group);
+    const car = buildCar(r.color, carModel(r.model)); scene.add(car.group);
     const rv = new Rival(car, track, 0, 0, r.skill, r.name); rv.css = r.css;
     rivals.push(rv);
   });
@@ -174,6 +184,7 @@ async function build() {
   await tick('READY', 100);
   const ld = document.getElementById('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 900);
   hud.show('title', true);
+  settingsUI = initSettings({ presets: QUALITY, active: qName, auto: qAuto && !params.get('q'), recommended: gpu.rec, gpu: gpu.name, Q, isTitle: () => state.mode === 'title' });
   if (params.has('demo')) { beginCountdown(); state.cd = 0.01; }
   const ff = parseFloat(params.get('ff') || '0');
   for (let t = 0; t < ff; t += 1 / 60) step(1 / 60);
@@ -260,12 +271,14 @@ const proxy = { s: 0, lat: 0, v: 0 };
 function step(dt) {
   gTime.value += dt;
   pollInput();
+  if (settingsUI) settingsUI.update();
   const st = state;
   if (oneShot.KeyC) camS.mode = (camS.mode + 1) % 3;
   if (oneShot.KeyM) audio.toggleMute();
   for (let n = 1; n <= 4; n++) if (oneShot['Digit' + n]) {
     const name = Object.keys(QUALITY)[n - 1];
     try { localStorage.setItem('satoyama.q', name); } catch { /* ignore */ }
+    clearCustom();
     params.set('q', name); location.search = params.toString();
   }
   const racing = st.mode === 'race';
@@ -274,7 +287,7 @@ function step(dt) {
 
   if (st.mode === 'title') {
     player.update(dt, IDLE);
-    if (oneShot.Enter || oneShot.Space) beginCountdown();
+    if ((oneShot.Enter || oneShot.Space) && !(settingsUI && settingsUI.open)) beginCountdown();
     st.cine = 1;
   } else if (st.mode === 'countdown') {
     st.cd -= dt;
@@ -403,6 +416,7 @@ const postP = { time: 0, speed: 0, letterbox: 0, fade: 1, sun: new THREE.Vector3
 let fadeIn = 0;
 function renderFrame() {
   camera.updateMatrixWorld();
+  updateLods(camera.position, Q.lod * lodK);
   V.sun.copy(camera.position).addScaledVector(SUN_DIR, 1000).project(camera);
   const fwd = camera.getWorldDirection(V.tgt);
   postP.sun.set(V.sun.x * 0.5 + 0.5, V.sun.y * 0.5 + 0.5, fwd.dot(SUN_DIR) > 0 ? 1 : 0);
@@ -430,7 +444,13 @@ function frame(now) {
     let nd = drs;
     const lo = Q.lowq ? 24 : 40, floor = Q.lowq ? 0.75 : 0.5;
     if (fps < lo) nd = Math.max(floor, drs - (fps < lo * 0.6 ? 0.15 : 0.08)); else if (fps > lo + 17 && drs < 1 && ++slowT > 2) { nd = Math.min(1, drs + 0.05); slowT = 0; }
-    if (nd !== drs && !params.has('nodrs')) { drs = nd; resize(); }
+    // Geometry is the first thing to give when the GPU falls behind: pull the LOD rings in before dropping resolution.
+    const adapt = Q.adaptive && !params.has('nodrs');
+    if (adapt) {
+      if (fps < lo && lodK > 0.5) { lodK = Math.max(0.5, lodK - 0.12); nd = drs; }
+      else if (fps > lo + 17 && drs >= 1 && lodK < 1) lodK = Math.min(1, lodK + 0.04);
+    }
+    if (nd !== drs && adapt) { drs = nd; resize(); }
     fpsEl.textContent = `${fps.toFixed(0)} FPS · ${post.w}×${post.h} · ${qName.toUpperCase()}`;
   }
 }

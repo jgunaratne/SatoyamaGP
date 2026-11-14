@@ -13,6 +13,7 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.wasm': 'application/wasm', '.map': 'application/json',
+  '.glb': 'model/gltf-binary',
 };
 
 createServer((req, res) => {
@@ -29,7 +30,8 @@ createServer((req, res) => {
     'Content-Type': TYPES[extname(file)] || 'application/octet-stream',
     'Content-Length': st.size,
     // Vite fingerprints everything under /assets, so it can be cached forever; index.html must not be.
-    'Cache-Control': path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    // The 3D models are large and not fingerprinted: cache them for a day.
+    'Cache-Control': path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : path.startsWith('/models/') ? 'public, max-age=86400' : 'no-cache',
   });
   if (req.method === 'HEAD') res.end(); else createReadStream(file).pipe(res);
 }).listen(PORT, HOST, () => console.log(`satoyama-gp: serving ${ROOT} on http://${HOST}:${PORT}`));

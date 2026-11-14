@@ -2,3 +2,5 @@ node_modules/
 dist/
 .DS_Store
 *.log
+assets_src/models/*.glb
+assets_src/models/*.meta.json
