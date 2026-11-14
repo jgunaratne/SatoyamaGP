@@ -1,0 +1,19 @@
+[Unit]
+Description=Publish racing.local mDNS alias for this host
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+Requires=avahi-daemon.service
+
+# The alias script lives under /home/junius/Web on the root filesystem.
+
+[Service]
+Type=simple
+# The script resolves the DHCP-assigned address at start time rather than
+# baking it into this file, and publishes without a reverse (PTR) record —
+# this host already owns the reverse mapping under www.local.
+ExecStart=/home/junius/Web/forza/deploy/avahi-alias-racing.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+[Unit]
+Description=racing — Satoyama GP WebGL racing game, static build (racing.local)
+After=network.target
+
+[Service]
+Type=simple
+User=junius
+WorkingDirectory=/home/junius/Web/forza
+
+Environment=NODE_ENV=production
+
+# Serves the Vite build in dist/ — after changing the game, run `npm run build`
+# (no restart needed; files are read from disk per request).
+#
+# Loopback only — nginx is the way in.
+# Port 3013 — on this box 3000/3001 are leetlive, 3002/3008 senate, 3003 swiss,
+# 3005 firerunway, 3006 budget, 3009 broadcast, 3010 house, 3011 backtest,
+# 3012 looks, 8000 budget API, 8080 pokemon.
+ExecStart=/usr/bin/node server.mjs --host 127.0.0.1 --port 3013
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
