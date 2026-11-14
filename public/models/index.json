@@ -1,0 +1,118 @@
+{
+ "azalea": {
+  "kind": "bush",
+  "lods": 3
+ },
+ "bamboo": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "boulder_a": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "boulder_b": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "car_black": {
+  "kind": "car",
+  "lods": 2
+ },
+ "car_blue": {
+  "kind": "car",
+  "lods": 2
+ },
+ "car_green": {
+  "kind": "car",
+  "lods": 2
+ },
+ "car_red": {
+  "kind": "car",
+  "lods": 2
+ },
+ "car_white": {
+  "kind": "car",
+  "lods": 2
+ },
+ "car_yellow": {
+  "kind": "car",
+  "lods": 2
+ },
+ "cedar_a": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "cedar_b": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "farmhouse_a": {
+  "kind": "build",
+  "lods": 3
+ },
+ "farmhouse_b": {
+  "kind": "build",
+  "lods": 3
+ },
+ "fern": {
+  "kind": "grass",
+  "lods": 3
+ },
+ "grass_a": {
+  "kind": "grass",
+  "lods": 3
+ },
+ "grass_b": {
+  "kind": "grass",
+  "lods": 3
+ },
+ "hokora": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "kei_truck": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "kura": {
+  "kind": "build",
+  "lods": 3
+ },
+ "lantern": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "nanohana": {
+  "kind": "grass",
+  "lods": 3
+ },
+ "pine": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "sakura_a": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "sakura_b": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "sakura_c": {
+  "kind": "tree",
+  "lods": 4
+ },
+ "shrub": {
+  "kind": "bush",
+  "lods": 3
+ },
+ "torii": {
+  "kind": "prop",
+  "lods": 3
+ },
+ "zelkova": {
+  "kind": "tree",
+  "lods": 4
+ }
+}

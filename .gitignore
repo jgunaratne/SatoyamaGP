@@ -3,3 +3,5 @@ dist/
 .DS_Store
 *.log
 .env
+assets_src/models/*.glb
+assets_src/models/*.meta.json

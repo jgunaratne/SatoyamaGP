@@ -1,0 +1,240 @@
+{
+  "style": "photorealistic real-world photograph reference of a single object, true-to-life proportions and scale, physically accurate natural materials with fine surface detail and subtle weathering, soft even overcast daylight, no harsh shadows, no ground plane, no people, isolated on a plain neutral light-grey studio background, entire object in frame, three-quarter view",
+  "preset": "ultra",
+  "output_dir": "../assets_src/models",
+  "image_model": "gemini-image-2-flash-lite-png",
+  "assets": [
+    {
+      "id": "car_red",
+      "prompt": "production deep crimson red two-door low sleek fastback sports coupe, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 11
+    },
+    {
+      "id": "car_white",
+      "prompt": "production pearl white two-door wide-body grand touring sports coupe with a rear wing, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 12
+    },
+    {
+      "id": "car_blue",
+      "prompt": "production electric blue two-door compact rally-bred hot hatchback with flared arches, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 13
+    },
+    {
+      "id": "car_yellow",
+      "prompt": "production bright yellow two-door lightweight mid-engine sports car, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 14
+    },
+    {
+      "id": "car_black",
+      "prompt": "production gloss black two-door muscular long-bonnet sports coupe, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 15
+    },
+    {
+      "id": "car_green",
+      "prompt": "production racing green two-door classic-styled compact sports coupe with a ducktail, glossy metallic clearcoat paint, dark tinted glass, detailed LED headlights and tail lights, multi-spoke alloy wheels with low-profile tyres, door seams, mirrors, front splitter and small rear spoiler, no logos, no number plates text",
+      "preset": "ultra",
+      "decimation_target": 200000,
+      "texture_size": 2048,
+      "seed": 16
+    },
+    {
+      "id": "sakura_a",
+      "prompt": "mature Japanese somei-yoshino cherry blossom tree in full bloom, broad rounded spreading crown, dark rough furrowed bark trunk with visible spreading branches, thousands of dense pale-pink blossom clusters on fine twigs, complete tree from roots to crown",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 21
+    },
+    {
+      "id": "sakura_b",
+      "prompt": "mature Japanese somei-yoshino cherry blossom tree in full bloom, tall vase-shaped crown with a forked trunk, dark rough furrowed bark trunk with visible spreading branches, thousands of dense pale-pink blossom clusters on fine twigs, complete tree from roots to crown",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 22
+    },
+    {
+      "id": "sakura_c",
+      "prompt": "mature Japanese somei-yoshino cherry blossom tree in full bloom, old leaning gnarled trunk and wide asymmetrical umbrella canopy, dark rough furrowed bark trunk with visible spreading branches, thousands of dense pale-pink blossom clusters on fine twigs, complete tree from roots to crown",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 23
+    },
+    {
+      "id": "cedar_a",
+      "prompt": "tall Japanese cedar sugi conifer tree, narrow conical forest-grown form, straight reddish-brown fibrous bark trunk, layered drooping dark green needle foliage boughs, complete tree from base to tip",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 31
+    },
+    {
+      "id": "cedar_b",
+      "prompt": "tall Japanese cedar sugi conifer tree, fuller irregular form with some bare lower trunk, straight reddish-brown fibrous bark trunk, layered drooping dark green needle foliage boughs, complete tree from base to tip",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 32
+    },
+    {
+      "id": "zelkova",
+      "prompt": "mature Japanese zelkova keyaki shade tree with fresh spring-green leaves, smooth grey bark, fan-shaped spreading branch structure, dense natural leafy canopy, complete tree",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 33
+    },
+    {
+      "id": "pine",
+      "prompt": "Japanese black pine garden tree with twisting sculpted trunk, layered cloud-pruned dark green needle pads, rough plated bark, complete tree",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 34
+    },
+    {
+      "id": "bamboo",
+      "prompt": "dense natural clump of tall green moso bamboo culms with segmented stalks and feathery leafy tops, a small grove cluster growing from the soil",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 35
+    },
+    {
+      "id": "grass_a",
+      "prompt": "natural clump of tall wild meadow grass, many individual slender green blades and a few dry straw-coloured blades with seed heads, growing from a small patch of soil",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 41
+    },
+    {
+      "id": "grass_b",
+      "prompt": "clump of Japanese susuki pampas grass with long arching green leaf blades and feathery silver-beige plumes, growing from a small patch of soil",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 42
+    },
+    {
+      "id": "fern",
+      "prompt": "lush clump of wild green fern fronds and low broadleaf weeds, natural roadside undergrowth growing from a small patch of soil",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 43
+    },
+    {
+      "id": "nanohana",
+      "prompt": "clump of blooming yellow rapeseed nanohana wildflowers with green stems and leaves, natural spring roadside flowers growing from a small patch of soil",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 44
+    },
+    {
+      "id": "azalea",
+      "prompt": "rounded natural azalea shrub with dense small dark green leaves covered in magenta-pink blossoms",
+      "preset": "hero",
+      "decimation_target": 80000,
+      "texture_size": 2048,
+      "seed": 45
+    },
+    {
+      "id": "shrub",
+      "prompt": "wild roadside green shrub bush with dense small leaves and twiggy branches, natural irregular shape",
+      "preset": "hero",
+      "decimation_target": 80000,
+      "texture_size": 2048,
+      "seed": 46
+    },
+    {
+      "id": "farmhouse_a",
+      "prompt": "traditional Japanese rural kominka farmhouse, large hip-and-gable irimoya roof of weathered grey kawara clay tiles, aged dark timber frame, white plaster walls, sliding shoji and glass doors, wooden engawa veranda, stone foundation, entire detached building",
+      "preset": "ultra",
+      "decimation_target": 180000,
+      "texture_size": 2048,
+      "seed": 51
+    },
+    {
+      "id": "farmhouse_b",
+      "prompt": "traditional Japanese countryside farmhouse with a rust-red painted metal roof over an old thatch form, weathered cedar board walls, sliding wooden doors, small entrance porch, stone foundation, entire detached building",
+      "preset": "ultra",
+      "decimation_target": 180000,
+      "texture_size": 2048,
+      "seed": 52
+    },
+    {
+      "id": "kura",
+      "prompt": "traditional Japanese kura storehouse, thick white plaster walls with black namako tile lower wall pattern, heavy small shuttered window, gabled grey kawara tile roof, stone base, entire small detached building",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 53
+    },
+    {
+      "id": "torii",
+      "prompt": "large traditional Japanese shinto torii gate, two round vermilion red-lacquered wooden pillars on black bases, curved black-capped upper lintel kasagi and straight lower tie beam nuki, slightly weathered paint, front elevation view",
+      "preset": "ultra",
+      "decimation_target": 100000,
+      "texture_size": 2048,
+      "seed": 54
+    },
+    {
+      "id": "lantern",
+      "prompt": "old Japanese stone toro garden lantern carved from grey granite with moss and lichen patches, pedestal, light chamber with openings, wide curved cap and finial",
+      "preset": "hero",
+      "decimation_target": 80000,
+      "texture_size": 2048,
+      "seed": 55
+    },
+    {
+      "id": "boulder_a",
+      "prompt": "large natural weathered granite boulder with cracks, moss and lichen patches",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 56
+    },
+    {
+      "id": "boulder_b",
+      "prompt": "cluster of three natural mossy river rocks of different sizes",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 57
+    },
+    {
+      "id": "hokora",
+      "prompt": "small Japanese roadside wooden hokora wayside shrine on a stone plinth with a copper-green gabled roof, shimenawa rope and a small stone jizo statue wearing a red bib beside it",
+      "preset": "hero",
+      "decimation_target": 100000,
+      "texture_size": 2048,
+      "seed": 58
+    },
+    {
+      "id": "kei_truck",
+      "prompt": "white Japanese kei mini pickup truck farm vehicle with a flat cargo bed, slightly dusty, steel wheels, realistic production vehicle, no logos",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 59
+    }
+  ]
+}
