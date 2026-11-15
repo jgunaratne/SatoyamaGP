@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Track, buildRoad, buildGuardrails } from './track.js';
 import { Terrain, buildShoulders } from './terrain.js';
-import { buildSky, orientSun, SUN_DIR } from './sky.js';
+import { buildSky, orientSun, setSky, SUN_DIR } from './sky.js';
 import { buildProps } from './props.js';
 import { buildFlora } from './flora.js';
 import { buildCar } from './car.js';
@@ -136,6 +136,7 @@ async function build() {
   terrain = new Terrain(track, LEVEL);
   await tick('LIGHTING THE SKY', 42);
   const h0 = Math.atan2(track.tx[0], track.tz[0]);
+  setSky(LEVEL.sky);   // time of day for this course
   orientSun(h0);
   sky = buildSky(scene, renderer, Q.lowq, { x: track.px[0], z: track.pz[0], heading: h0 });
   sky.sun.shadow.mapSize.set(Q.shadow, Q.shadow);
@@ -228,7 +229,7 @@ function beginCountdown() {
   hud.show('title', false); hud.show('results', false); hud.show('hud', true);
   hud.set('split', '');
   audio.play('ui_start');
-  audio.playMusic(RACE_TRACKS, sfx.race++); // each race opens on the next track, then the playlist rolls on
+  audio.playMusic(LEVEL.music || RACE_TRACKS, sfx.race++); // each race opens on the next track of this course's playlist, then it rolls on
   sfx.wrong = 0;
 }
 function restart() { placeGrid(); beginCountdown(); }

@@ -30,6 +30,13 @@ export const LEVELS = [
     id: 'hakone', n: '02', name: 'HAKONE LAKES PASS', laps: 2, room: 'H',
     blurb: 'Lakeshore sweepers, hairpins through cedar forest and a ridge road past a crater pond.',
     track: { points: HAKONE_POINTS, startNear: shore(-8, 3) },
+    music: ['hakone1', 'hakone2'],
+    // Late afternoon: the sun sits low over the lake, the light is deep amber and the shadows are long.
+    sky: {
+      el: 11, az: -58, sunColor: [1, 0.66, 0.4], sunIntensity: 6.4, hemi: 0.46, env: 0.95,
+      zenith: [0.07, 0.15, 0.4], horizon: [0.56, 0.47, 0.5], glow: [1.7, 0.72, 0.3],
+      cloudShade: [0.33, 0.26, 0.36], cloudLit: [1.7, 0.98, 0.58], fog: [0.68, 0.5, 0.41], fogDensity: 0.00052,
+    },
     terrain: { farms: false, mountainFrom: 26, mountainTo: 430, roadDip: 1.6 },
     lakes: [ASHI, { x: 730, z: -70, a: 95, b: 95, level: 103, depth: 4 }],
     // a torii standing in the lake off the shore road

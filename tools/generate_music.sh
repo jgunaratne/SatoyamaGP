@@ -61,7 +61,10 @@ declare -A TRACKS=(
   [race3]="Race theme: festival bass house and electro at 128 BPM in G minor, pumping four-on-the-floor kick with heavy sidechain, a gritty wobbling bassline, offbeat open hats and claps, a bright anthemic koto and supersaw melody over the drop, taiko ensemble rolls in the build-ups, shakuhachi lead in the breakdown, huge festival-style risers. Euphoric, sunlit, big-crowd racing festival energy."
   [results]="Results screen theme after the race: confident modern chill trap and future garage beat at 96 BPM in A minor, deep warm 808 sub, crisp swung hi-hats, snappy snare and rimshots, a laid-back plucked koto melody with shakuhachi answers, lush filtered synth pads, soft taiko accents, vinyl-free clean modern sound. Cool-down, victorious, golden-hour afterglow."
 )
-ORDER=(title race1 race2 race3 results)
+# Hakone Lakes Pass has its own playlist (levels.js `music`).
+TRACKS[hakone1]="Race theme for a mountain lake road at golden hour: uplifting liquid drum and bass at 172 BPM in E minor, rolling breakbeat with crisp ghost snares, a warm deep sub bass, a shimmering koto arpeggio as the main hook, long expressive shakuhachi melodies, wide airy pads, bright piano chords in the drops and a soaring emotional lead; fast and flowing, wistful but driving, the feeling of chasing the sunset along the water. Instrumental, no vocals."
+TRACKS[hakone2]="Race theme for hairpin bends through a cedar forest at dusk: high-energy 1990s style eurobeat and italo disco at 156 BPM in B minor, pounding four-on-the-floor kick, galloping octave synth bass, bright brass stabs, a blazing fast tsugaru shamisen riff trading phrases with a glossy supersaw lead, dramatic key lifts into each chorus, taiko fills before the drops; relentless, heroic, pure mountain-pass adrenaline. Instrumental, no vocals."
+ORDER=(title race1 race2 race3 results hakone1 hakone2)
 [ "$#" -gt 0 ] && ORDER=("$@")
 
 for name in "${ORDER[@]}"; do
