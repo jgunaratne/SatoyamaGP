@@ -1,118 +1,147 @@
 {
  "azalea": {
   "kind": "bush",
-  "lods": 3
+  "lods": 3,
+  "v": "4b610a0d78"
  },
  "bamboo": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "dd15316188"
  },
  "boulder_a": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "ff09236e0f"
  },
  "boulder_b": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "33dd621273"
  },
  "car_black": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "5793723452"
  },
  "car_blue": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "8aca33e402"
  },
  "car_green": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "7934237d81"
  },
  "car_red": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "ee59ab1f1f"
  },
  "car_white": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "5b4af61b80"
  },
  "car_yellow": {
   "kind": "car",
-  "lods": 2
+  "lods": 2,
+  "v": "a917fc8425"
  },
  "cedar_a": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "45d30170bc"
  },
  "cedar_b": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "c3483331b4"
  },
  "farmhouse_a": {
   "kind": "build",
-  "lods": 3
+  "lods": 3,
+  "v": "f5724aa8a7"
  },
  "farmhouse_b": {
   "kind": "build",
-  "lods": 3
+  "lods": 3,
+  "v": "de958ba396"
  },
  "fern": {
   "kind": "grass",
-  "lods": 3
+  "lods": 3,
+  "v": "5607616545"
  },
  "grass_a": {
   "kind": "grass",
-  "lods": 3
+  "lods": 3,
+  "v": "3126807d31"
  },
  "grass_b": {
   "kind": "grass",
-  "lods": 3
+  "lods": 3,
+  "v": "d699923599"
  },
  "hokora": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "caf1127e1c"
  },
  "kei_truck": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "31b2c01ea4"
  },
  "kura": {
   "kind": "build",
-  "lods": 3
+  "lods": 3,
+  "v": "a2b8b7ceee"
  },
  "lantern": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "5c26f6b798"
  },
  "nanohana": {
   "kind": "grass",
-  "lods": 3
+  "lods": 3,
+  "v": "074e5ffe95"
  },
  "pine": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "38338d454f"
  },
  "sakura_a": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "56b5f73311"
  },
  "sakura_b": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "a9b60d6718"
  },
  "sakura_c": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "c4ebeb5041"
  },
  "shrub": {
   "kind": "bush",
-  "lods": 3
+  "lods": 3,
+  "v": "297ac39efe"
  },
  "torii": {
   "kind": "prop",
-  "lods": 3
+  "lods": 3,
+  "v": "a8b70a9dd8"
  },
  "zelkova": {
   "kind": "tree",
-  "lods": 4
+  "lods": 4,
+  "v": "e6f2806682"
  }
 }

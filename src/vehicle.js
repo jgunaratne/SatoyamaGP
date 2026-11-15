@@ -1,7 +1,7 @@
 import { clamp, lerp, wrapAngle } from './util.js';
 import { ROAD_HALF, RAIL_OFF } from './track.js';
 import { SHOULDER_W, SHOULDER_DROP } from './terrain.js';
-import { WHEEL_R, WHEEL_Z, WHEEL_X } from './car.js';
+import { WHEEL_Z, WHEEL_X, wheelSpinStep } from './car.js';
 
 const GEAR_TOP = [0, 17, 28, 40, 53, 66, 82]; // m/s at redline per gear
 const POWER = 215;        // specific power, W/kg
@@ -178,7 +178,7 @@ export class Vehicle {
     c.group.rotation.set(-this.pitch, this.heading, this.roll, 'YXZ');
     c.body.rotation.z = clamp(this.latAcc * 0.0035, -0.06, 0.06);
     c.body.rotation.x = clamp(-this.longAcc * 0.0028, -0.035, 0.04);
-    this.spin += (this.vf * dt) / WHEEL_R;
+    this.spin += wheelSpinStep(this.vf, dt);
     for (const w of c.wheels) {
       w.spin.rotation.x = this.spin;
       if (w.front) w.pivot.rotation.y = this.steer * 1.4;
