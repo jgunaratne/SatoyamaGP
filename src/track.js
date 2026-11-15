@@ -6,13 +6,18 @@ export const RAIL_OFF = ROAD_HALF + 0.9;
 
 // Convention used everywhere: heading h -> forward (sin h, cos h), left (cos h, -sin h).
 export class Track {
-  constructor() {
-    const radii = [560, 610, 500, 370, 440, 600, 660, 580, 430, 330, 430, 590, 640, 520, 400, 470];
-    const K = radii.length, pts = [];
-    for (let i = 0; i < K; i++) {
-      const a = (i / K) * Math.PI * 2, r = radii[i];
-      const y = 8 + 10 * Math.sin(a * 2 + 0.8) + 6 * Math.sin(a * 3 + 2.0);
-      pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  // def.points: closed loop of [x, y, z] control points (see levels.js); without it, the Sakura Valley loop.
+  // def.startNear: [x, y, z] the start line should be close to.
+  constructor(def = {}) {
+    const pts = [];
+    if (def.points) for (const [x, y, z] of def.points) pts.push(new THREE.Vector3(x, y, z));
+    else {
+      const radii = [560, 610, 500, 370, 440, 600, 660, 580, 430, 330, 430, 590, 640, 520, 400, 470], K = radii.length;
+      for (let i = 0; i < K; i++) {
+        const a = (i / K) * Math.PI * 2, r = radii[i];
+        const y = 8 + 10 * Math.sin(a * 2 + 0.8) + 6 * Math.sin(a * 3 + 2.0);
+        pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+      }
     }
     const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
     curve.arcLengthDivisions = 6000;
@@ -30,6 +35,7 @@ export class Track {
       }
       let best = 0, bv = 1e9;
       for (let i = 0; i < N; i += 2) {
+        if (def.startNear && Math.hypot(sp[i].x - def.startNear[0], sp[i].z - def.startNear[2]) > 160) continue;
         let m = 0;
         for (let o = -45; o <= 150; o += 3) m = Math.max(m, kk[(i + o + N) % N]);
         if (m < bv) { bv = m; best = i; }

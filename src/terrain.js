@@ -8,7 +8,9 @@ export const T_PADDY = 1, T_VEG = 2, T_YARD = 3, T_FLOWER = 4;
 const HALF = TSIZE / 2;
 
 export class Terrain {
-  constructor(track) {
+  constructor(track, level = {}) {
+    const opt = { farms: true, mountainFrom: 120, mountainTo: 620, roadDip: 0, ...(level.terrain || {}) };
+    const lakes = (this.lakes = level.lakes || []);
     const n1 = (this.n1 = TN + 1);
     const H = (this.H = new Float32Array(n1 * n1));
     const D = (this.D = new Float32Array(n1 * n1));
@@ -34,15 +36,24 @@ export class Terrain {
         const d = Math.hypot(x - track.px[idx], z - track.pz[idx]);
         const th = lerp(track.heightAt(x, z, idx), sy / sw, smoothstep(16, 45, d));
         const r = Math.hypot(x, z);
-        const m = Math.pow(smoothstep(120, 620, d), 1.4);
+        // Lakes: no mountains close to the water, and a bowl below the water level inside the shoreline.
+        let dry = 1, bowl = 0, wet = 0;
+        for (const L of lakes) {
+          const q = Math.hypot((x - L.x) / L.a, (z - L.z) / L.b);
+          dry = Math.min(dry, smoothstep(1.03, 1.45, q));
+          if (q < 1.06) { wet = 1 - smoothstep(0.94, 1.06, q); bowl = L.level - 0.4 - L.depth * (1 - smoothstep(0.5, 1, q)); }
+        }
+        const m = Math.pow(smoothstep(opt.mountainFrom, opt.mountainTo, d), 1.4) * dry;
         const rid = ridged(x * 0.0016, z * 0.0016, 5);
         const big = fbm(x * 0.0007 + 5, z * 0.0007 + 9, 3);
-        const h = th - 0.35
+        // roadDip: on steep, twisting roads the 8 m height grid cannot follow the asphalt exactly, so the ground
+        // directly under the road is sunk a little further to keep it from poking through.
+        const h = th - 0.35 - opt.roadDip * (1 - smoothstep(4, 8, d))
           + smoothstep(16, 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * 5
           + m * (40 + 340 * (0.55 * rid + 0.45 * fbm(x * 0.003 + 2, z * 0.003 - 4, 4)) * (0.5 + big))
-          + smoothstep(800, 1500, r) * 230 * (0.5 + rid);
+          + smoothstep(800, 1500, r) * 230 * (0.5 + rid) * dry;
         const o = j * n1 + i;
-        H[o] = h; D[o] = d; TH[o] = th; IDX[o] = idx;
+        H[o] = lerp(h, bowl, wet); D[o] = d; TH[o] = th; IDX[o] = idx;
       }
     }
 
@@ -50,7 +61,7 @@ export class Terrain {
     const ncx = (this.ncx = Math.floor(TN / CX)), ncz = (this.ncz = Math.floor(TN / CZ));
     this.cellData = new Uint8Array(ncx * ncz * 4);
     this.cells = [];
-    for (let cj = 0; cj < ncz; cj++) for (let ci = 0; ci < ncx; ci++) {
+    for (let cj = 0; cj < ncz && opt.farms; cj++) for (let ci = 0; ci < ncx; ci++) {
       const i0 = ci * CX, j0 = cj * CZ;
       let minD = 1e9;
       for (let j = j0; j <= j0 + CZ; j++) for (let i = i0; i <= i0 + CX; i++) minD = Math.min(minD, D[j * n1 + i]);
@@ -82,6 +93,11 @@ export class Terrain {
     return (A[o] * (1 - u) + A[o + 1] * u) * (1 - v) + (A[o + n1] * (1 - u) + A[o + n1 + 1] * u) * v;
   }
   heightAt(x, z) { return this._bil(this.H, x, z); }
+  // The lake whose water covers (x, z), or null. `margin` > 1 also counts a strip of shore.
+  lakeAt(x, z, margin = 1) {
+    for (const L of this.lakes) if (Math.hypot((x - L.x) / L.a, (z - L.z) / L.b) < margin && this.heightAt(x, z) < L.level + (margin > 1 ? 1.2 : 0)) return L;
+    return null;
+  }
   distAt(x, z) { return this._bil(this.D, x, z); }
   slopeAt(x, z) {
     const e = 4;

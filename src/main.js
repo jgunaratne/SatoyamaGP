@@ -15,6 +15,8 @@ import { Post } from './post.js';
 import { Hud, fmtTime } from './hud.js';
 import { EngineAudio, RACE_TRACKS } from './audio.js';
 import { Models, updateLods } from './models.js';
+import { currentLevel, switchLevel, initLevelPicker } from './levels.js';
+import { buildLakes } from './lakes.js';
 import { initSettings, resolveQuality, storedPreset, clearCustom } from './settings.js';
 import { Colliders, clamp, lerp, smoothstep, wrapAngle, gTime, initNoise } from './util.js';
 
@@ -25,7 +27,8 @@ const QUALITY = {
   high: { models: 'full', adaptive: true, lod: 1, scale: 1, msaa: 4, shadow: 2048, dofTaps: 40, blurSamples: 6, density: 1, lowq: false, dpr: 1.5 },
   ultra: { models: 'full', adaptive: true, lod: 1.6, scale: 1, msaa: 4, shadow: 4096, dofTaps: 64, blurSamples: 8, density: 1.4, lowq: false, dpr: 2 },
 };
-const LAPS = 2;
+const LEVEL = currentLevel(params);   // which course this page load builds (levels.js)
+const LAPS = LEVEL.laps;
 const RIVALS = [
   { name: 'AKIRA', model: 'car_white', color: 0xf2f2ee, css: '#f2f2ee', skill: 1.0 },
   { name: 'MIKA', model: 'car_blue', color: 0x1456d8, css: '#3b7bff', skill: 0.82 },
@@ -127,10 +130,10 @@ async function build() {
   resize();
   initNoise();
   await tick('SURVEYING THE CIRCUIT', 8);
-  track = new Track();
+  track = new Track(LEVEL.track);
   colliders = new Colliders(16);
   await tick('RAISING MOUNTAINS', 20);
-  terrain = new Terrain(track);
+  terrain = new Terrain(track, LEVEL);
   await tick('LIGHTING THE SKY', 42);
   const h0 = Math.atan2(track.tx[0], track.tz[0]);
   orientSun(h0);
@@ -144,7 +147,8 @@ async function build() {
   const tmat = terrain.buildMaterial(Q.lowq);
   scene.add(terrain.buildMesh(), buildShoulders(track, tmat), buildRoad(track), buildGuardrails(track));
   await tick('PLANTING SAKURA', 74);
-  flora = buildFlora(scene, track, terrain, colliders, props, Q, models);
+  flora = buildFlora(scene, track, terrain, colliders, props, Q, models, LEVEL);
+  buildLakes(scene, LEVEL, terrain, models);
   await tick('TUNING ENGINES', 88);
   const world = { track, terrain, colliders };
   // REDUCED keeps the cheap procedural cars: the clustered LODs are meant for distance, not for the hero object
@@ -165,6 +169,7 @@ async function build() {
   updateCamera(0.016); renderFrame();
   await tick('READY', 100);
   const ld = document.getElementById('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 900);
+  initLevelPicker(LEVEL);
   hud.show('title', true);
   settingsUI = initSettings({
     presets: QUALITY, active: qName, auto: qAuto && !params.get('q'), recommended: gpu.rec, gpu: gpu.name, Q,
@@ -314,6 +319,7 @@ function step(dt) {
   if (st.mode === 'title') {
     player.update(dt, IDLE);
     if (!menuOpen) {
+      if (oneShot.ArrowLeft || oneShot.ArrowRight) switchLevel(LEVEL, oneShot.ArrowLeft ? -1 : 1);   // ◀ ▶ change course
       if (oneShot.Enter || oneShot.Space) beginCountdown();
       else if (oneShot.KeyO) openLobby();
     }
@@ -337,6 +343,7 @@ function step(dt) {
     for (const r of rivals) r.update(dt, others, st.prog, true, st.time);
     collideRivals();
     if (Math.abs(player.lat) > 170) resetToTrack();
+    { const L = terrain.lakeAt(player.x, player.z); if (L && player.y < L.level - 1.1) { resetToTrack(); hud.banner('SPLASH!', 'BACK ON THE ROAD', 1.6); } }   // drove into a lake
     let di = player.idx - st.lastIdx; const N = track.N;
     if (di > N / 2) di -= N; if (di < -N / 2) di += N;
     st.prog += di * track.ds; st.lastIdx = player.idx;
@@ -459,15 +466,17 @@ const net = new Net(WS_URL, {
 });
 const lobby = new Lobby({
   onJoin: (code) => joinRoom(code),
-  onName: () => { if (net.room && net.room.state === 'lobby') joinRoom(net.room.code); },
+  onName: () => { if (net.room && net.room.state === 'lobby') joinRoom(bareRoom(net.room.code)); },
   onStart: () => startOnline(),
   onLeave: () => closeLobby(),
 });
+// the code players see and share, without the per-course suffix added on the wire
+const bareRoom = (c) => (LEVEL.room && c.endsWith(LEVEL.room) ? c.slice(0, -LEVEL.room.length) : c);
 const roomParam = () => { const c = (params.get('room') || '').toUpperCase(); return /^[A-Z0-9]{3,8}$/.test(c) ? c : null; };
 
 function joinRoom(code) {
   params.set('room', code); history.replaceState(null, '', '?' + params.toString()); // the address bar is the invite link
-  net.join(code, lobby.name); renderLobby();
+  net.join(code + LEVEL.room, lobby.name); renderLobby();   // each course has its own rooms, so everyone in a room drives the same road
 }
 function openLobby() {
   soloGrid(); placeGrid(); state.mode = 'lobby';
@@ -536,7 +545,7 @@ function renderLobby() {
   else if (!r) status = 'CONNECTING…';
   else if (r.state === 'race') status = 'RACE IN PROGRESS — YOU ARE IN THE NEXT ONE';
   else { status = `${r.players.length} / ${aiRivals.length + 1} DRIVERS · AI FILLS THE EMPTY SLOTS`; hint = canStart ? `${ok} — START RACE · ${hint}` : `WAITING FOR THE HOST TO START · ${hint}`; }
-  lobby.render({ status, code: r ? r.code : roomParam(), players: r ? r.players : [], hostId: r ? r.host : 0, myId: net.id, canStart, hint });
+  lobby.render({ status, code: r ? bareRoom(r.code) : roomParam(), players: r ? r.players : [], hostId: r ? r.host : 0, myId: net.id, canStart, hint });
 }
 
 // On-screen prompts follow the device last touched: keyboard text is whatever index.html says.
