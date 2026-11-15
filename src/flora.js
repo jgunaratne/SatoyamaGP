@@ -108,22 +108,24 @@ function tuftGeometry() {
   return g;
 }
 
-export function buildFlora(scene, track, terrain, colliders, props, q, models = null) {
+export function buildFlora(scene, track, terrain, colliders, props, q, models = null, level = {}) {
   const yardTrees = props.yardTrees, M = (...ids) => (models ? models.all(...ids) : null);
+  // per-course planting (levels.js); the defaults are Sakura Valley
+  const F = { forestFrom: 172, forest: 20000, forestLod: 520, nearForest: 0, sakura: 1, petals: 1, verge: null, rocks: 1, ...(level.flora || {}) };
   const group = new THREE.Group();
   scene.add(group);
   const N = track.N;
 
   // ----- cedar forest on the slopes -----
   {
-    const items = [], want = Math.round(20000 * q.density);
+    const items = [], want = Math.round(F.forest * q.density);
     for (let tries = 0; items.length < want && tries < want * 14; tries++) {
       const x = (rng() - 0.5) * 2960, z = (rng() - 0.5) * 2960;
       const d = terrain.distAt(x, z);
-      if (d < 172) continue;
+      if (d < F.forestFrom || terrain.lakeAt(x, z, 1.12)) continue;
       if (terrain.slopeAt(x, z) > 0.95) continue;
       const dens = fbm(x * 0.004 + 3, z * 0.004 + 1, 3);
-      const near = Math.max(0, 1 - (d - 172) / 500);
+      const near = Math.max(0, 1 - (d - F.forestFrom) / 500);
       if (rng() > 0.25 + 0.75 * near || dens < 0.33) continue;
       const s = 0.75 + rng() * 0.75, k = 0.75 + rng() * 0.5;
       items.push({ x, y: terrain.heightAt(x, z) - 0.4, z, ry: rng() * 6.28, s, sy: s * (0.9 + rng() * 0.4), c: [k, k * (0.9 + rng() * 0.2), k * 0.9] });
@@ -136,12 +138,35 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
           return { ...it, s: sc, sy: sc * (it.sy / it.s), c: [0.8 + it.c[0] * 0.25, 0.8 + it.c[1] * 0.25, 0.8 + it.c[2] * 0.25] };
         });
         // the forest starts 170 m from the road: it only ever needs the two cheapest levels
-        group.add(scatter(m, sub, { cell: 96, first: 2, dist: [520], cast: 0, receive: false }));
+        group.add(scatter(m, sub, { cell: 96, first: 2, dist: [F.forestLod], cast: 0, receive: false }));
       });
     } else {
       const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
       group.add(chunked(cedarGeometry(), mat, items, 384, false));
     }
+  }
+
+  // ----- woodland right up to the road (forest courses): cedar with some zelkova and pine, full LOD chain -----
+  if (F.nearForest) {
+    const kinds = [['cedar_a', 4, 19, 8], ['cedar_b', 3, 18, 8], ['zelkova', 2, 11, 4], ['pine', 1, 7, 3]]
+      .map(([id, w, h, hv]) => ({ m: models && q.models !== 'off' ? models.get(id) : null, w, h, hv, list: [] }));
+    const total = kinds.reduce((a, k) => a + k.w, 0), want = Math.round(F.nearForest * q.density), plain = [];
+    for (let n = 0, tries = 0; n < want && tries < want * 6; tries++) {
+      const i = Math.floor(rng() * N), sd = rng() < 0.5 ? 1 : -1, lat = sd * (15 + Math.pow(rng(), 0.8) * (F.forestFrom - 15));
+      const x = track.px[i] + track.lx[i] * lat, z = track.pz[i] + track.lz[i] * lat;
+      // not in the water, not on a cliff, and not beside another stretch of road (hairpins fold the track back)
+      if (terrain.distAt(x, z) < 14 || terrain.lakeAt(x, z, 1.15) || terrain.slopeAt(x, z) > 1.1) continue;
+      let r = rng() * total, k = kinds[0];
+      for (const kk of kinds) { if (r < kk.w) { k = kk; break; } r -= kk.w; }
+      const h = k.h + rng() * k.hv, t = 0.85 + rng() * 0.3, y = terrain.heightAt(x, z) - 0.3;
+      if (k.m) k.list.push({ x, y, z, ry: rng() * 6.28, s: h / k.m.size.y, c: [t, t, t * 0.96] });
+      else plain.push({ x, y, z, ry: rng() * 6.28, s: h / 21, c: [t, t, t * 0.9] });
+      colliders.add(x, z, 0.6);
+      n++;
+    }
+    // Tight LOD rings: this band holds thousands of trees, so only the handful beside the car are full detail.
+    for (const k of kinds) if (k.m) group.add(scatter(k.m, k.list, { cell: 32, dist: [26, 85, 320], cast: 2 }));
+    if (plain.length) group.add(chunked(cedarGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }), plain, 192, true));
   }
 
   // ----- sakura avenues + farmyard trees -----
@@ -150,13 +175,14 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
     const pinks = [[1, 1, 1], [1.08, 0.93, 0.97], [1.1, 1.08, 1.06], [0.98, 0.82, 0.9]];
     let side = 1;
     for (let i = 4; i < N; i += 7) {
-      const inAvenue = fbm(i * 0.011, 2.5, 3) > 0.43 || i < 170 || i > N - 110;
+      const inAvenue = fbm(i * 0.011, 2.5, 3) > 0.43 + (1 - F.sakura) * 0.4 || i < 170 || i > N - 110;
       if (!inAvenue) continue;
       for (const sd of [side, -side]) {
         if (sd !== side && rng() < 0.45) continue;
         const off = sd * (ROAD_HALF + 7 + rng() * 3.2);
         const x = track.px[i] + track.lx[i] * off, z = track.pz[i] + track.lz[i] * off;
         const s = 0.95 + rng() * 0.5;
+        if (terrain.lakeAt(x, z, 1.1)) continue;
         items.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s, c: pinks[Math.floor(rng() * pinks.length)] });
         colliders.add(x, z, 0.5);
       }
@@ -213,7 +239,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
     const kinds = [
       ['grass_a', 0.36, 0.95, 0.4, 0.13], ['grass_b', 0.14, 1.75, 0.5, 0.1], ['fern', 0.2, 0.6, 0.3, 0.06],
       ['nanohana', 0.14, 1.05, 0.3, 0.09], ['shrub', 0.1, 1.5, 0.5, 0], ['azalea', 0.06, 1.1, 0.3, 0],
-    ].map(([id, share, h, hv, sway]) => ({ m: M(id), share, h, hv, sway, list: [] })).filter((k) => k.m);
+    ].map(([id, share, h, hv, sway]) => ({ m: M(id), share: F.verge ? F.verge[id] || 0 : share, h, hv, sway, list: [] })).filter((k) => k.m && k.share > 0);
     const total = kinds.reduce((a, k) => a + k.share, 0), want = Math.round(9000 * q.density);
     for (let n = 0; n < want && kinds.length; n++) {
       let r = rng() * total, k = kinds[0];
@@ -231,7 +257,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
     const rocks = M('boulder_a', 'boulder_b');
     if (rocks) {
       const lists = rocks.map(() => []);
-      for (let i = 30; i < N - 20; i += 23 + Math.floor(rng() * 30)) {
+      for (let i = 30; i < N - 20; i += Math.round((23 + Math.floor(rng() * 30)) / F.rocks)) {
         const sd = rng() < 0.5 ? 1 : -1, lat = sd * (ROAD_HALF + 6.5 + rng() * 9), v = Math.floor(rng() * rocks.length);
         const x = track.px[i] + track.lx[i] * lat, z = track.pz[i] + track.lz[i] * lat, h = 0.7 + rng() * 1.1;
         lists[v].push({ x, y: terrain.heightAt(x, z) - h * 0.12, z, ry: rng() * 6.28, s: h / rocks[v].size.y });
@@ -276,7 +302,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
 
   // ----- drifting sakura petals -----
   const BOX = new THREE.Vector3(70, 26, 70);
-  const count = Math.round(2600 * Math.max(0.4, q.density));
+  const count = Math.round(2600 * Math.max(0.4, q.density) * F.petals);
   const pp = new Float32Array(count * 3), seed = new Float32Array(count);
   for (let i = 0; i < count; i++) { pp[i * 3] = rng() * BOX.x; pp[i * 3 + 1] = rng() * BOX.y; pp[i * 3 + 2] = rng() * BOX.z; seed[i] = rng(); }
   const pg = new THREE.BufferGeometry();

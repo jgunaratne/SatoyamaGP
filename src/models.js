@@ -64,7 +64,8 @@ export class Models {
 
   // lodStart > 0 skips the heaviest levels (low quality tier).
   async load(lodStart = 0, onProgress = () => {}, only = null) {
-    try { this.index = await (await fetch(BASE + 'index.json')).json(); } catch { this.index = {}; }
+    // The index is always revalidated; each model URL carries its content hash from the index.
+    try { this.index = await (await fetch(BASE + 'index.json', { cache: 'no-cache' })).json(); } catch { this.index = {}; }
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const jobs = [];
     for (const [id, info] of Object.entries(this.index)) {
@@ -76,7 +77,7 @@ export class Models {
     const raw = new Map();
     await Promise.all(jobs.map(async (j) => {
       try {
-        const gltf = await loader.loadAsync(`${BASE}${j.id}.${j.n}.glb`);
+        const gltf = await loader.loadAsync(`${BASE}${j.id}.${j.n}.glb?v=${this.index[j.id].v || 0}`);
         let mesh = null;
         gltf.scene.updateMatrixWorld(true);
         gltf.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });

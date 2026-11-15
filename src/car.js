@@ -3,6 +3,15 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SHADOW_ONLY } from './models.js';
 
 export const WHEEL_R = 0.33, WHEEL_X = 0.83, WHEEL_Z = 1.38;
+
+// Wheel rotation for one frame at ground speed v. A real wheel at racing speed turns more than one spoke spacing
+// per frame, which the eye reads as frozen or spinning backwards (the wagon-wheel effect). Past walking pace the
+// visible step is capped just under half the spacing of a ten-spoke rim, so the wheels always read as rolling forward.
+const SPIN_CAP = 0.27;
+export function wheelSpinStep(v, dt) {
+  const a = (v * dt) / WHEEL_R;
+  return Math.max(-SPIN_CAP, Math.min(SPIN_CAP, a));
+}
 const HALF_LEN = 2.3;
 
 // 1D Catmull-Rom through (z, value) keys.

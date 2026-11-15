@@ -1,5 +1,5 @@
 import { clamp, lerp, wrapAngle } from './util.js';
-import { WHEEL_R } from './car.js';
+import { wheelSpinStep } from './car.js';
 
 // Rival driver: follows the centreline with a racing-line bias, brakes for curvature, dodges traffic.
 export class Rival {
@@ -51,7 +51,7 @@ export class Rival {
     c.group.position.set(this.x, this.y, this.z);
     c.group.rotation.set(-Math.atan(f.slope), this.heading, 0, 'YXZ');
     c.body.rotation.z = lerp(c.body.rotation.z, clamp(this.v * this.v * f.k * 0.0035, -0.05, 0.05), 0.1);
-    this.spin += (this.v * dt) / WHEEL_R;
+    this.spin += wheelSpinStep(this.v, dt);
     for (const w of c.wheels) w.spin.rotation.x = this.spin;
     c.tail.emissiveIntensity = this.braking ? 14 : 1.6;
   }

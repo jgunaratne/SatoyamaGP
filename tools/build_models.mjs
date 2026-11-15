@@ -5,7 +5,8 @@
 // usage: GT_MODULES=/dir/with/node_modules node tools/build_models.mjs [id ...] [--force]
 //   needs @gltf-transform/cli (which brings @gltf-transform/core and sharp); GT_MODULES defaults to this repo.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -319,6 +320,13 @@ for (const f of readdirSync(SRC).filter((n) => n.endsWith('.glb')).sort()) {
     }
     console.log(`${id}.${n}.glb  ${lvl.mode}  ${(statSync(out).size / 1e6).toFixed(2)} MB${tris}`);
   }
+}
+// Content hash per asset: the game appends it to the .glb URLs, so a rebuilt model can never be served stale from
+// a browser or proxy cache (the files themselves are cached for a long time).
+for (const [id, info] of Object.entries(index)) {
+  const h = createHash('sha1');
+  for (let n = 0; n < info.lods; n++) { const f = join(OUT, `${id}.${n}.glb`); if (existsSync(f)) h.update(readFileSync(f)); }
+  info.v = h.digest('hex').slice(0, 10);
 }
 writeFileSync(join(OUT, 'index.json'), JSON.stringify(index, null, 1));
 console.log(`index.json: ${Object.keys(index).length} assets`);
