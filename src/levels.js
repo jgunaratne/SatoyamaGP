@@ -54,8 +54,8 @@ export const LEVELS = [
     // a torii standing in the lake off the shore road
     torii: { x: ASHI.x + ASHI.a * 0.9 * Math.cos(0.09), z: ASHI.b * 0.9 * Math.sin(0.09), ry: Math.PI / 2, height: 9.5 },
     flora: {
-      // the forest comes within 70 m of the road here, so its mid-detail ring is pulled in to stay affordable
-      forestFrom: 70, forest: 30000, forestLod: 230, nearForest: 2600, sakura: 0.35, petals: 0.2, rocks: 2,
+      // the forest comes within 70 m of the road here; keep mid-detail crowns well past the visible bends
+      forestFrom: 70, forest: 30000, forestLod: 680, nearForest: 2600, sakura: 0.35, petals: 0.2, rocks: 2,
       // forest-floor and moorland verge: pampas grass, ferns, azalea; no rapeseed
       verge: { grass_a: 0.2, grass_b: 0.32, fern: 0.28, nanohana: 0, shrub: 0.12, azalea: 0.08 },
     },

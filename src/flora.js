@@ -111,7 +111,7 @@ function tuftGeometry() {
 export function buildFlora(scene, track, terrain, colliders, props, q, models = null, level = {}) {
   const yardTrees = props.yardTrees, M = (...ids) => (models ? models.all(...ids) : null);
   // per-course planting (levels.js); the defaults are Sakura Valley
-  const F = { forestFrom: 172, forest: 20000, forestLod: 520, nearForest: 0, sakura: 1, petals: 1, verge: null, rocks: 1, ...(level.flora || {}) };
+  const F = { forestFrom: 172, forest: 20000, forestLod: 750, nearForest: 0, sakura: 1, petals: 1, verge: null, rocks: 1, ...(level.flora || {}) };
   const group = new THREE.Group();
   scene.add(group);
   const N = track.N;
@@ -137,8 +137,8 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
           const sc = (21 * it.s) / m.size.y;
           return { ...it, s: sc, sy: sc * (it.sy / it.s), c: [0.8 + it.c[0] * 0.25, 0.8 + it.c[1] * 0.25, 0.8 + it.c[2] * 0.25] };
         });
-        // the forest starts 170 m from the road: it only ever needs the two cheapest levels
-        group.add(scatter(m, sub, { cell: 96, first: 2, dist: [F.forestLod], cast: 0, receive: false }));
+        // the forest starts away from the road: keep smaller cells so distant ridges step smoothly
+        group.add(scatter(m, sub, { cell: 64, first: 2, dist: [F.forestLod], cast: 0, receive: false }));
       });
     } else {
       const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
@@ -164,8 +164,8 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
       colliders.add(x, z, 0.6);
       n++;
     }
-    // Tight LOD rings: this band holds thousands of trees, so only the handful beside the car are full detail.
-    for (const k of kinds) if (k.m) group.add(scatter(k.m, k.list, { cell: 32, dist: [26, 85, 320], cast: 2 }));
+    // Keep full-canopy level 1 well down the road so woodland trees never pop in as you round a bend.
+    for (const k of kinds) if (k.m) group.add(scatter(k.m, k.list, { cell: 28, dist: [110, 420, 950], cast: 2 }));
     if (plain.length) group.add(chunked(cedarGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }), plain, 192, true));
   }
 
@@ -202,7 +202,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         const v = Math.floor(rng() * sak.length), k = 0.94 + rng() * 0.1;
         lists[v].push({ ...it, s: (10 * it.s) / sak[v].size.y, c: green ? null : [k, k * (0.97 + rng() * 0.05), k] });
       }
-      const o = { cell: 32, dist: [180, 420, 900], cast: 2 };
+      const o = { cell: 28, dist: [200, 520, 1050], cast: 2 };
       sak.forEach((m, v) => group.add(scatter(m, lists[v], o)));
       if (zel) group.add(scatter(zel[0], greens, o));
     } else {
@@ -220,7 +220,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: ((10 + rng() * 4)) / bam[0].size.y });
         colliders.add(x, z, 0.8);
       }
-      group.add(scatter(bam[0], list, { cell: 32, dist: [180, 420, 900], cast: 2 }));
+      group.add(scatter(bam[0], list, { cell: 28, dist: [200, 520, 1050], cast: 2 }));
     }
     if (pine) {
       const list = [];
@@ -230,7 +230,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
         list.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s: (5 + rng() * 1.5) / pine[0].size.y });
         colliders.add(x, z, 0.5);
       }
-      group.add(scatter(pine[0], list, { cell: 32, dist: [180, 420, 900], cast: 2 }));
+      group.add(scatter(pine[0], list, { cell: 28, dist: [200, 520, 1050], cast: 2 }));
     }
   }
 
@@ -252,7 +252,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
       const s = (k.h * (1 + (rng() - 0.5) * 2 * k.hv)) / k.m[0].size.y, t = 0.85 + rng() * 0.3;
       k.list.push({ x, y: Math.max(sh, terrain.heightAt(x, z)) - 0.04 * k.h, z, ry: rng() * 6.28, s, c: [t, t * (0.95 + rng() * 0.1), t * 0.95] });
     }
-    for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 20, dist: [45, 150], far: 420, cast: 1, sway: k.sway }));
+    for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 24, dist: [65, 200], far: 650, cast: 1, sway: k.sway }));
 
     const rocks = M('boulder_a', 'boulder_b');
     if (rocks) {

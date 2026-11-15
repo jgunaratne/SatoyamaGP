@@ -102,18 +102,30 @@ export class Models {
       // Stand every level on the origin using the most detailed level's bounds.
       levels[0].geo.computeBoundingBox();
       const bb = levels[0].geo.boundingBox, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
-      const kind = this.index[id].kind;
-      for (const l of levels) {
+      const size0 = bb.getSize(new THREE.Vector3());
+      const kind = this.index[id].kind, foliage = kind === 'tree' || kind === 'bush' || kind === 'grass';
+      levels.forEach((l, idx) => {
         l.geo.translate(-cx, -bb.min.y, -cz);
-        l.geo.computeBoundingBox(); l.geo.computeBoundingSphere();
+        l.geo.computeBoundingBox();
+        if (idx > 0 && foliage) {
+          // Voxel clustering clips outer twig/spire tips on coarse LODs; restore the exact level-0 envelope so trees never jump in height.
+          const bbL = l.geo.boundingBox, szL = bbL.getSize(new THREE.Vector3());
+          if (szL.x > 1e-4 && szL.y > 1e-4 && szL.z > 1e-4) {
+            l.geo.translate(-(bbL.min.x + bbL.max.x) / 2, -bbL.min.y, -(bbL.min.z + bbL.max.z) / 2);
+            l.geo.scale(size0.x / szL.x, size0.y / szL.y, size0.z / szL.z);
+            l.geo.computeBoundingBox();
+          }
+        }
+        l.geo.computeBoundingSphere();
         const m = l.mat;
         if (m.map) m.map.anisotropy = 8;
         if (kind !== 'car') { m.metalness = 0; m.roughness = Math.max(m.roughness, 0.9); }
         else if (!m.map) { m.metalness = 0.35; m.roughness = 0.4; }
         else if (l.geo.attributes.uv1) l.parts = splitWheels(l.geo, vertexGloss(l.geo, m));
+        if (!m.map && foliage) smoothCrownNormals(l.geo, size0);
         m.transparent = false; m.depthWrite = true; m.side = m.map ? THREE.FrontSide : THREE.DoubleSide;
-      }
-      this.map.set(id, { id, kind, levels, size: bb.getSize(new THREE.Vector3()) });
+      });
+      this.map.set(id, { id, kind, levels, size: size0 });
     }
     return this;
   }
@@ -128,21 +140,44 @@ const _d = new THREE.Object3D(), _c = new THREE.Color();
 // Draws nothing in the colour pass but still casts: lets a cheap LOD stand in for a 150k-triangle mesh in the shadow map.
 export const SHADOW_ONLY = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 
-function swayMaterial(src, amount) {
+// Smooth outward canopy normals for clustered foliage LODs so backlit crowns shade like level 0 instead of glittering.
+function smoothCrownNormals(geo, size) {
+  const pos = geo.attributes.position, nrm = geo.attributes.normal, n = pos.count;
+  const out = new Float32Array(n * 3), cy = size.y * 0.42, upBias = size.y * 0.16;
+  for (let i = 0; i < n; i++) {
+    let cx = pos.getX(i), cy0 = (pos.getY(i) - cy) * 0.55 + upBias, cz = pos.getZ(i);
+    const cl = Math.hypot(cx, cy0, cz) || 1; cx /= cl; cy0 /= cl; cz /= cl;
+    const ox = nrm ? nrm.getX(i) : 0, oy = nrm ? nrm.getY(i) : 1, oz = nrm ? nrm.getZ(i) : 0;
+    let nx = cx * 0.82 + ox * 0.18, ny = cy0 * 0.82 + oy * 0.18, nz = cz * 0.82 + oz * 0.18;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    out[i * 3] = nx / l; out[i * 3 + 1] = ny / l; out[i * 3 + 2] = nz / l;
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+}
+
+function foliageMaterial(src, amount = 0, twoSidedCrown = false) {
+  if (!amount && !twoSidedCrown) return src;
   const mat = src.clone();
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = gTime;
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          vec3 ip = instanceMatrix[3].xyz;
-          float w = sin(uTime * 2.1 + ip.x * .31 + ip.z * .27) + .5 * sin(uTime * 3.7 + ip.x * .9 - ip.z * .6);
-          float hy = max(position.y, 0.); hy *= hy;
-          transformed.x += w * ${amount.toFixed(3)} * hy; transformed.z += w * ${(amount * 0.55).toFixed(3)} * hy;
-        #endif`);
+    if (amount) {
+      sh.uniforms.uTime = gTime;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vec3 ip = instanceMatrix[3].xyz;
+            float w = sin(uTime * 2.1 + ip.x * .31 + ip.z * .27) + .5 * sin(uTime * 3.7 + ip.x * .9 - ip.z * .6);
+            float hy = max(position.y, 0.); hy *= hy;
+            transformed.x += w * ${amount.toFixed(3)} * hy; transformed.z += w * ${(amount * 0.55).toFixed(3)} * hy;
+          #endif`);
+    }
+    if (twoSidedCrown) {
+      // Keep the crown normal on back-facing clustered leaves instead of flipping it into the sun.
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>',
+        '#include <normal_fragment_begin>\nnormal = normalize( vNormal );');
+    }
   };
-  mat.customProgramCacheKey = () => 'sway' + amount;
+  mat.customProgramCacheKey = () => `fol_${amount}_${twoSidedCrown ? 1 : 0}`;
   return mat;
 }
 
@@ -155,7 +190,11 @@ export function scatter(model, items, opt = {}) {
   const out = new THREE.Group();
   if (!model || !items.length) return out;
   const cell = opt.cell || 64, first = Math.min(opt.first || 0, model.levels.length - 1);
-  const levels = model.levels.slice(first).map((l) => ({ geo: l.geo, mat: opt.sway ? swayMaterial(l.mat, opt.sway) : l.mat }));
+  const foliage = model.kind === 'tree' || model.kind === 'bush' || model.kind === 'grass';
+  const levels = model.levels.slice(first).map((l) => ({
+    geo: l.geo,
+    mat: foliageMaterial(l.mat, opt.sway || 0, foliage && !l.mat.map),
+  }));
   const dist = (opt.dist || []).slice(0, levels.length - 1);
   const groups = new Map();
   for (const it of items) {
