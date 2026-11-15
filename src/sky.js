@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NOISE_TEX_GLSL, gNoise, gTime, fbm } from './util.js';
+import { loadTexture } from './textures.js';
 
 // Time of day. Each course can override any of these (levels.js `sky`); the defaults are Sakura Valley's
 // mid-afternoon. el/az are the sun's elevation and its bearing from the start straight, in degrees.
@@ -137,31 +138,29 @@ function buildBackdrop(start) {
       if (i < SEG) { const v = base + i * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); }
     }
   }
-  if (SKY.city) {
-    // Distant stepped high-rise silhouette ring around the metropolitan horizon
-    for (const [R, maxH, count, seed, topC, baseC] of [
-      [2250, 210, 220, 3.1, [0.05, 0.08, 0.16], [0.16, 0.11, 0.22]],
-      [1920, 165, 180, 8.7, [0.03, 0.05, 0.11], [0.13, 0.10, 0.20]],
-    ]) {
-      for (let i = 0; i < count; i++) {
-        const a0 = (i / count) * Math.PI * 2, da = (Math.PI * 2 / count) * 0.78;
-        const hVal = Math.abs(Math.sin(i * 12.9898 + seed) * 43758.5453) % 1;
-        if (hVal < 0.22) continue;
-        const th = 35 + Math.pow(hVal, 1.5) * maxH;
-        const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a0 + da), s1 = Math.sin(a0 + da);
-        const v = pos.length / 3;
-        pos.push(c0 * R, -40, s0 * R, c0 * R, th, s0 * R, c1 * R, -40, s1 * R, c1 * R, th, s1 * R);
-        col.push(...baseC, ...topC, ...baseC, ...topC);
-        idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
-      }
-    }
-  }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.setIndex(idx);
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
   g.add(new THREE.Mesh(geo, mat));
+
+  if (SKY.city) {
+    // The far metropolis: two rings of gemini-image night-skyline panoramas (keyed to alpha), mirrored around the horizon
+    // so they join without a seam. The nearer ring is taller; the farther one fills the gaps behind it.
+    for (const [file, R, reps, aspect, y0, turn, tint] of [
+      ['skyline_b', 3100, 11, 1584 / 289, -14, 0.21, 0.95], ['skyline_a', 2350, 8, 1584 / 316, -10, 0, 1.5],
+    ]) {
+      const h = (2 * Math.PI * R) / reps / aspect;
+      const cyl = new THREE.CylinderGeometry(R, R, h, 160, 1, true);
+      const uv = cyl.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * reps);
+      const m = new THREE.Mesh(cyl, new THREE.MeshBasicMaterial({ map: loadTexture(`city/${file}.webp`), alphaTest: 0.5, fog: false, side: THREE.BackSide }));
+      m.material.color.setScalar(tint);   // above 1 so the brightest windows reach the bloom
+      m.position.y = y0 + h / 2; m.rotation.y = turn; m.renderOrder = -50;
+      g.add(m);
+    }
+  }
 
   // Fuji-style stratovolcano.
   const H = 2500, R = 4200, pts = [];

@@ -151,7 +151,7 @@ async function build() {
   buildCity(scene, track, terrain, colliders, LEVEL, Q, models);
   await tick(LEVEL.city ? 'PAVING EXPRESSWAYS' : 'FLOODING RICE PADDIES', 62);
   const tmat = terrain.buildMaterial(Q.lowq);
-  scene.add(terrain.buildMesh(), buildShoulders(track, tmat, LEVEL), buildRoad(track), buildGuardrails(track));
+  scene.add(terrain.buildMesh(), buildShoulders(track, tmat, LEVEL), buildRoad(track, { urban: !!LEVEL.city }), buildGuardrails(track));
   await tick('PLANTING SAKURA', 74);
   flora = buildFlora(scene, track, terrain, colliders, props, Q, models, LEVEL);
   buildLakes(scene, LEVEL, terrain, models, colliders);

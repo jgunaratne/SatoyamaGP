@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NOISE_TEX_GLSL, gNoise, wrapAngle } from './util.js';
+import { loadTexture } from './textures.js';
 
 export const ROAD_HALF = 5.0; // half width of the asphalt in metres
 export const RAIL_OFF = ROAD_HALF + 0.9;
@@ -125,7 +126,8 @@ export class Track {
   }
 }
 
-export function buildRoad(track) {
+// opt.urban: city expressway surface - a gemini-image asphalt map, crisper paint and a rain-damp sheen that picks up the sky.
+export function buildRoad(track, opt = {}) {
   const { N, px, py, pz, lx, lz, ds } = track;
   const pos = new Float32Array((N + 1) * 6), uv = new Float32Array((N + 1) * 4), idx = [];
   for (let i = 0; i <= N; i++) {
@@ -144,11 +146,12 @@ export function buildRoad(track) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uNoise = gNoise;
+    if (opt.urban) sh.uniforms.uAsph = { value: loadTexture('city/asphalt.webp') };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vRUv;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRUv = uv;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vRUv;\nfloat gRough;\n' + NOISE_TEX_GLSL)
+      .replace('#include <common>', '#include <common>\nvarying vec2 vRUv;\nfloat gRough;\n' + (opt.urban ? 'uniform sampler2D uAsph;\n' : '') + NOISE_TEX_GLSL)
       .replace('#include <color_fragment>', /* glsl */ `
         {
           float HW = ${ROAD_HALF.toFixed(2)};
@@ -172,6 +175,11 @@ export function buildRoad(track) {
           float dash = step(fract(s / 12.), .5);
           float center = (1. - smoothstep(.08, .08 + aa, abs(x))) * dash;
           float lm = max(edge, center) * (.55 + .45 * lw);
+          ${opt.urban ? `
+          // city course: the asphalt map (seams run along the road) replaces the procedural base
+          vec3 amap = texture2D(uAsph, vec2(x / 15., s / 12.)).rgb;
+          asphalt = min(amap, vec3(.11)) * (1.05 + .4 * n) * (1. - .16 * wear);
+          lm = max(edge, center) * (.8 + .2 * lw);` : ''}
           vec3 col = mix(asphalt, vec3(.62, .62, .58), lm);
           // chequered start line
           if (s < 2.4 && abs(x) < HW - .6) {
@@ -180,10 +188,14 @@ export function buildRoad(track) {
           }
           diffuseColor.rgb = col;
           gRough = mix(.84, .4, patchM) - wear * .12 + lm * .1;
+          ${opt.urban ? `
+          float damp = smoothstep(.38, .7, tf(vec2(x * .16 + 9., s * .028)));
+          gRough = mix(.5, .13, damp) - wear * .06 + lm * .3;` : ''}
         }
       `)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(gRough, .05, 1.);');
   };
+  mat.customProgramCacheKey = () => (opt.urban ? 'roadUrban' : 'road');
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;

@@ -174,7 +174,7 @@ export class Terrain {
     const ncx = this.ncx, ncz = this.ncz;
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uCells = { value: tex };
-      if (this.urban) sh.uniforms.uPave = { value: loadTexture('city/pavement.webp') };
+      if (this.urban) { sh.uniforms.uPave = { value: loadTexture('city/pavement.webp') }; sh.uniforms.uAsph = { value: loadTexture('city/asphalt.webp') }; sh.uniforms.uLawn = { value: loadTexture('city/lawn.webp') }; }
       sh.uniforms.uNoise = gNoise;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float aRoad;\nvarying float vRoad;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
@@ -182,7 +182,7 @@ export class Terrain {
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
           uniform sampler2D uCells;
-          ${this.urban ? 'uniform sampler2D uPave;' : ''}
+          ${this.urban ? 'uniform sampler2D uPave, uAsph, uLawn;' : ''}
           varying float vRoad; varying vec3 vWPos; varying vec3 vWNrm;
           float gRough;
           ${NOISE_TEX_GLSL}`)
@@ -262,14 +262,21 @@ export class Terrain {
             vec3 slab = texture2D(uPave, wp.xz / 5.2).rgb;
             slab = mix(vec3(.2), slab, exp(-vd * .006));
             vec3 pave = slab * mix(.3, .46, n1) * (.9 + .2 * n3);
-            vec3 streetCol = vec3(.026, .029, .036) * (.85 + .3 * n3);
+            // side streets: the road's asphalt map with a dashed centre line and pale kerb lines
+            bool alongZ = gx < gz;
+            float sd = min(gx, gz), sl = alongZ ? wp.z : wp.x;
+            vec3 streetCol = texture2D(uAsph, (alongZ ? wp.xz : wp.zx) / 9.).rgb * 1.3;
+            streetCol = mix(vec3(.04), streetCol, exp(-vd * .004));
+            float paint = (1. - smoothstep(.09, .16, sd)) * step(fract(sl / 9.), .45) + (1. - smoothstep(.07, .13, abs(sd - 3.55)));
+            paint *= 1. - smoothstep(3.8, 4.6, max(gx, gz));   // no paint through the junction box
+            streetCol = mix(streetCol, vec3(.42, .42, .4), clamp(paint, 0., 1.) * .8 * exp(-vd * .002));
             float park = smoothstep(.62, .76, n1) * (1. - street) * smoothstep(20., 45., vRoad);
-            vec3 parkLawn = mix(vec3(.022, .055, .028), vec3(.045, .095, .042), n2);
+            vec3 parkLawn = mix(vec3(.03, .07, .03), texture2D(uLawn, wp.xz / 7.).rgb * .55, exp(-vd * .005)) * (.8 + .4 * n1);
             col = mix(mix(pave, streetCol, street), parkLawn, park);
             // Concrete seawall / quay apron around Tokyo Bay shoreline
             float quay = (1. - smoothstep(-.4, 3.3, wp.y)) * (1. - park);
             col = mix(col, vec3(.11, .12, .14) * (.85 + .3 * n3), quay);
-            gRough = mix(.82, .52, street);
+            gRough = mix(mix(.8, .95, park), .32, street * (1. - park));
           }` : ''}
           float gr = 1. - smoothstep(${(ROAD_HALF + 0.3).toFixed(2)}, ${(ROAD_HALF + 1.8).toFixed(2)}, vRoad);
           col = mix(col, ${this.urban ? 'vec3(.13, .14, .165)' : 'vec3(.2, .18, .155)'} * (.7 + .6 * n3), gr);

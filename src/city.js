@@ -620,18 +620,27 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}, model
     [-620, 120, 320, 52], [-560, -420, 260, 38], [-180, 960, 250, 34],
     [-145, 90, 165, 36], [-150, -250, 155, 28], [920, -60, 210, 26],
   ];
+  // With models, the clusters are the same TRELLIS.2 buildings shown as their baked box impostors (10 triangles each).
+  const FAR = useModels ? kinds([['city_tower_a', 120, 230, 3], ['city_tower_b', 110, 200, 3], ['city_tower_c', 100, 180, 2], ['city_office_a', 60, 95, 2], ['city_apartment', 60, 100, 2], ['city_dept', 55, 80, 1]]) : [];
   for (const [cx, cz, radius, count] of clusters) {
-    const nWant = Math.round(count * densityK);
+    const nWant = Math.round(count * densityK * (FAR.length ? 1.5 : 1));
     for (let n = 0; n < nWant; n++) {
       const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * radius;
       const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
       const w = 22 + rng() * 22, d = 22 + rng() * 22;
       if (!okSpot(x, z, Math.hypot(w, d) * 0.45, 36)) continue;
+      if (FAR.length) {
+        const k = pick(FAR, null), fh = k.h0 + Math.pow(rng(), 1.3) * (k.h1 - k.h0), s = fh / k.m.size.y;
+        k.list.push({ x, y: terrain.heightAt(x, z) - 0.5, z, ry: Math.floor(rng() * 4) * (Math.PI / 2) + (rng() - 0.5) * 0.5, s, sy: s });
+        placed.push(x, z, Math.hypot(k.m.size.x, k.m.size.z) * s * 0.42);
+        continue;
+      }
       const h = 65 + Math.pow(rng(), 1.1) * 155;
       addBox(x, z, w, d, h, rng() * Math.PI * 0.5, rng() < 0.6 ? 'glass' : rng() < 0.6 ? 'office' : 'apartment', false);
       placed.push(x, z, Math.hypot(w, d) * 0.4);
     }
   }
+  for (const k of FAR) group.add(scatter(k.m, k.list, { cell: 500, first: 1, cast: 0 }));
 
   const addBatch = (geos, mat, cast = false) => {
     if (!geos.length) return;
