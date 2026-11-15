@@ -64,7 +64,10 @@ declare -A TRACKS=(
 # Hakone Lakes Pass has its own playlist (levels.js `music`).
 TRACKS[hakone1]="Race theme for a mountain lake road at golden hour: uplifting liquid drum and bass at 172 BPM in E minor, rolling breakbeat with crisp ghost snares, a warm deep sub bass, a shimmering koto arpeggio as the main hook, long expressive shakuhachi melodies, wide airy pads, bright piano chords in the drops and a soaring emotional lead; fast and flowing, wistful but driving, the feeling of chasing the sunset along the water. Instrumental, no vocals."
 TRACKS[hakone2]="Race theme for hairpin bends through a cedar forest at dusk: high-energy 1990s style eurobeat and italo disco at 156 BPM in B minor, pounding four-on-the-floor kick, galloping octave synth bass, bright brass stabs, a blazing fast tsugaru shamisen riff trading phrases with a glossy supersaw lead, dramatic key lifts into each chorus, taiko fills before the drops; relentless, heroic, pure mountain-pass adrenaline. Instrumental, no vocals."
-ORDER=(title race1 race2 race3 results hakone1 hakone2)
+# Coastal sea course has its own sunlit ocean-highway playlist (levels.js `music`).
+TRACKS[coast1]="Race theme for a sunlit Japanese coastal highway beside crashing turquoise ocean surf: euphoric high-tempo Japanese city-pop fusion and melodic drum and bass at 170 BPM in A major, crisp rolling breakbeat, slap-bass groove layered over warm sub bass, sparkling electric piano chords, soaring brass section hits, bright clean rhythm guitar skanks, and a joyous glossy synth-and-saxophone lead trading phrases with plucked shamisen runs; breezy, sun-drenched summer ocean drive adrenaline. Instrumental, no vocals."
+TRACKS[coast2]="Race theme for sweeping cliffside ocean bends and fishing villages by the sea: driving melodic progressive house and nu-disco synthwave at 132 BPM in F-sharp minor lifting to A major, punchy four-on-the-floor kick, pumping sidechained arpeggiated synth bass, shimmering 12-string guitar and koto plucks, bright trumpet and synth brass stabs, crashing surf-like white-noise risers into a huge sunlit anthemic chorus lead; exhilarating open-water horizon energy. Instrumental, no vocals."
+ORDER=(title race1 race2 race3 results hakone1 hakone2 coast1 coast2)
 [ "$#" -gt 0 ] && ORDER=("$@")
 
 for name in "${ORDER[@]}"; do

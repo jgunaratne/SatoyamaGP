@@ -35,7 +35,7 @@ const KIND = (id) =>
     : /^(sakura|cedar|zelkova|pine|bamboo)/.test(id) ? 'tree'
       : /^(grass|fern|nanohana)/.test(id) ? 'grass'
         : /^(azalea|shrub)/.test(id) ? 'bush'
-          : /^(farmhouse|kura)/.test(id) ? 'build' : 'prop';
+          : /^(farmhouse|kura|lighthouse|fishing_boat)/.test(id) ? 'build' : 'prop';
 
 const io = new NodeIO();
 const srgb2lin = new Float32Array(256).map((_, i) => { const c = i / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });

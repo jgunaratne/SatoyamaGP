@@ -235,6 +235,30 @@
       "decimation_target": 150000,
       "texture_size": 2048,
       "seed": 59
+    },
+    {
+      "id": "lighthouse",
+      "prompt": "traditional white-painted concrete coastal headland lighthouse tower in Japan, cylindrical tapering white masonry tower on an octagonal grey stone base, black iron gallery railing, glass lantern room and dome cap at the top, subtle salt-spray weathering, complete freestanding tower",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 61
+    },
+    {
+      "id": "tetrapod",
+      "prompt": "single weathered grey concrete four-legged coastal wave-dissipating tetrapod breakwater block with subtle cast concrete texture, salt staining and dark green sea-moss near the base",
+      "preset": "hero",
+      "decimation_target": 60000,
+      "texture_size": 1024,
+      "seed": 62
+    },
+    {
+      "id": "fishing_boat",
+      "prompt": "small Japanese fibreglass coastal fishing boat hull with white and blue painted hull, compact wheelhouse cabin amidships, coiled rope and orange floats on deck, outboard motor at stern, no water, entire boat",
+      "preset": "ultra",
+      "decimation_target": 120000,
+      "texture_size": 2048,
+      "seed": 63
     }
   ]
 }

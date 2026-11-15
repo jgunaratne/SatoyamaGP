@@ -19,6 +19,18 @@ const HAKONE_POINTS = [
   [-120, 34, -790], [-240, 19, -690], [-340, 8.5, -600],                                         // back down to the water
 ];
 
+// Shonan / Izu coastline: a sunlit seaside esplanade and fishing-port straight with the open Pacific and crashing surf
+// immediately on the left (-X), a sweeping cove climb up onto a cape headland past a white lighthouse, fast pine-ridge
+// sweepers inland, and a cliffside descent back to the harbour seawall.
+const COAST_POINTS = [
+  [-320, 3.6, -540], [-305, 3.3, -360], [-290, 3.1, -180], [-285, 3.0, 0], [-295, 3.1, 180], [-320, 3.4, 350],
+  [-375, 5.5, 520], [-455, 11.0, 670], [-495, 22.0, 810], [-430, 36.0, 920],
+  [-290, 44.0, 955], [-135, 42.0, 900], [-35, 34.0, 770],
+  [85, 46.0, 620], [215, 56.0, 450], [295, 58.0, 250], [305, 50.0, 30],
+  [255, 40.0, -180], [320, 32.0, -370], [310, 24.0, -550],
+  [210, 16.0, -700], [60, 11.0, -775], [-105, 7.5, -770], [-245, 5.0, -690],
+];
+
 export const LEVELS = [
   {
     id: 'sakura', n: '01', name: 'SAKURA VALLEY CIRCUIT', laps: 2, room: '',
@@ -46,6 +58,40 @@ export const LEVELS = [
       forestFrom: 70, forest: 30000, forestLod: 230, nearForest: 2600, sakura: 0.35, petals: 0.2, rocks: 2,
       // forest-floor and moorland verge: pampas grass, ferns, azalea; no rapeseed
       verge: { grass_a: 0.2, grass_b: 0.32, fern: 0.28, nanohana: 0, shrub: 0.12, azalea: 0.08 },
+    },
+  },
+  {
+    id: 'coast', n: '03', name: 'SHONAN COASTAL HIGHWAY', laps: 2, room: 'C',
+    blurb: 'Sunlit ocean esplanade, crashing turquoise surf, a cape lighthouse and pine-clad sea cliffs.',
+    track: { points: COAST_POINTS, startNear: [-288, 3, -240] },
+    music: ['coast1', 'coast2'],
+    // Bright breezy coastal afternoon: crisp deep-azure zenith, sunlit marine horizon, open sea to the west (-X).
+    sky: {
+      el: 28, az: -62, sunColor: [1, 0.94, 0.84], sunIntensity: 8.1, hemi: 0.48, env: 0.95, openSea: true,
+      zenith: [0.045, 0.19, 0.56], horizon: [0.46, 0.62, 0.74], glow: [1.35, 0.98, 0.62],
+      cloudShade: [0.42, 0.48, 0.58], cloudLit: [1.55, 1.48, 1.38], fog: [0.54, 0.65, 0.74], fogDensity: 0.00032,
+    },
+    terrain: { farms: false, mountainFrom: 42, mountainTo: 420, roadDip: 2.2 },
+    lakes: [],
+    sea: {
+      level: 0, depth: 15, shoreX: -322,
+      waves: [[-35, 0.0042, -0.4], [18, 0.0095, 1.1], [8, 0.021, 2.0]],
+      lighthouse: { x: -535, z: 810, baseY: 28, height: 28, ry: 0.6 },
+      torii: { x: -358, z: -20, height: 10.2, ry: Math.PI / 2 },
+      breakwaters: [[-520, -220, 26], [280, 510, 20]],
+      boats: [
+        [-385, -155, 0.35, 11.5], [-430, -35, 1.85, 10.5], [-395, 185, -0.55, 11.0],
+        [-465, 390, 0.95, 11.5], [-390, -395, 2.4, 10.0],
+      ],
+      seaStacks: [
+        [-560, -310, 9.5], [-640, 60, 14.0], [-590, 560, 11.5],
+        [-720, 860, 16.0], [-490, -680, 10.0],
+      ],
+    },
+    villages: [[-480, 260, 30]],
+    flora: {
+      forestFrom: 95, forest: 19000, forestLod: 520, nearForest: 1600, sakura: 0.22, petals: 0.06, rocks: 2.2,
+      verge: { grass_a: 0.28, grass_b: 0.34, fern: 0.1, nanohana: 0.06, shrub: 0.14, azalea: 0.08 },
     },
   },
 ];
@@ -81,7 +127,7 @@ const CSS = `
 #course h2 { margin: 0; font-size: 7vh; font-weight: 900; line-height: 1; }
 #course h2 em { color: var(--pink); font-style: inherit; }
 #course .cards { display: flex; gap: 2.2vw; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
-#course .card { font: inherit; color: #fff; text-align: left; cursor: pointer; width: min(46vh, 44vw); padding: 0 0 1.8vh; background: rgba(11,12,16,.9);
+#course .card { font: inherit; color: #fff; text-align: left; cursor: pointer; width: min(41vh, 29vw); padding: 0 0 1.8vh; background: rgba(11,12,16,.9);
   border: .5vh solid transparent; box-shadow: 0 1.5vh 4vh rgba(0,0,0,.5); transition: transform .12s, border-color .12s; }
 #course .card[aria-pressed="true"] { border-color: var(--pink); transform: translateY(-1vh); }
 #course canvas { display: block; width: 100%; aspect-ratio: 16 / 10; background: #10141b; }
@@ -116,14 +162,26 @@ export function initCourseSelect(cfg) {
     for (let i = 0; i < t.N; i++) grow(t.px[i], t.pz[i]);
     for (const L of level.lakes) { grow(L.x - L.a, L.z - L.b); grow(L.x + L.a, L.z + L.b); }
     const sc = Math.min((W - 50) / (x1 - x0), (H - 50) / (z1 - z0)), mx = (x) => W / 2 + (x - (x0 + x1) / 2) * sc, mz = (z) => H / 2 + (z - (z0 + z1) / 2) * sc;
+    if (level.sea) grow(level.sea.shoreX - 280, 0);
+    const sc2 = Math.min((W - 50) / (x1 - x0), (H - 50) / (z1 - z0));
+    const px = (x) => W / 2 + (x - (x0 + x1) / 2) * sc2, pz = (z) => H / 2 + (z - (z0 + z1) / 2) * sc2;
     g.fillStyle = '#17212a'; g.fillRect(0, 0, W, H);
     g.fillStyle = '#2f7f9c';
-    for (const L of level.lakes) { g.beginPath(); g.ellipse(mx(L.x), mz(L.z), L.a * sc, L.b * sc, 0, 0, Math.PI * 2); g.fill(); }
-    const path = () => { g.beginPath(); for (let i = 0; i <= t.N; i += 3) g.lineTo(mx(t.px[i % t.N]), mz(t.pz[i % t.N])); g.closePath(); };
+    if (level.sea) {
+      const shAt = (z) => { let s = level.sea.shoreX; for (const [a, f, p] of (level.sea.waves || [])) s += a * Math.sin(z * f + p); return s; };
+      g.beginPath(); g.moveTo(0, 0);
+      for (let py0 = 0; py0 <= H; py0 += 6) {
+        const z = (py0 - H / 2) / sc2 + (z0 + z1) / 2;
+        g.lineTo(px(shAt(z)), py0);
+      }
+      g.lineTo(0, H); g.closePath(); g.fill();
+    }
+    for (const L of level.lakes) { g.beginPath(); g.ellipse(px(L.x), pz(L.z), L.a * sc2, L.b * sc2, 0, 0, Math.PI * 2); g.fill(); }
+    const path = () => { g.beginPath(); for (let i = 0; i <= t.N; i += 3) g.lineTo(px(t.px[i % t.N]), pz(t.pz[i % t.N])); g.closePath(); };
     g.lineJoin = 'round';
     path(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 11; g.stroke();
     path(); g.strokeStyle = '#fff'; g.lineWidth = 5; g.stroke();
-    g.fillStyle = '#ffe14a'; g.beginPath(); g.arc(mx(t.px[0]), mz(t.pz[0]), 7, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffe14a'; g.beginPath(); g.arc(px(t.px[0]), pz(t.pz[0]), 7, 0, Math.PI * 2); g.fill();
     return t.length;
   }
 
