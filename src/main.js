@@ -15,7 +15,7 @@ import { Post } from './post.js';
 import { Hud, fmtTime } from './hud.js';
 import { EngineAudio, RACE_TRACKS } from './audio.js';
 import { Models, updateLods } from './models.js';
-import { currentLevel, switchLevel, initLevelPicker } from './levels.js';
+import { currentLevel, gotoLevel, showLevelName, initCourseSelect } from './levels.js';
 import { buildLakes } from './lakes.js';
 import { initSettings, resolveQuality, storedPreset, clearCustom } from './settings.js';
 import { Colliders, clamp, lerp, smoothstep, wrapAngle, gTime, initNoise } from './util.js';
@@ -87,7 +87,7 @@ let oneShot = {};
 // ------------------------------------------------------------------ world
 let track, terrain, colliders, sky, flora, hud, player, rivals = [], playerCar, smoke;
 const models = new Models();
-let settingsUI = null;
+let settingsUI = null, courseUI = null;
 const loadBar = document.getElementById('loadBar'), loadText = document.getElementById('loadText');
 const tick = (label, pct) => { loadText.textContent = label; loadBar.style.width = pct + '%'; return new Promise((r) => setTimeout(r, 30)); };
 
@@ -169,8 +169,20 @@ async function build() {
   updateCamera(0.016); renderFrame();
   await tick('READY', 100);
   const ld = document.getElementById('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 900);
-  initLevelPicker(LEVEL);
+  showLevelName(LEVEL);
   hud.show('title', true);
+  // Course select: shown when the player starts from the title. The world is generated at load, so a different
+  // course reloads the page and the fresh page carries straight on (?go=) into the countdown or the lobby.
+  courseUI = initCourseSelect({
+    level: LEVEL,
+    hint: () => { const p = controls.device === 'pad' && controls.pad; return `◀ ▶ SELECT · ${p ? p.ok : 'ENTER'} RACE · ${p ? p.online : 'O'} ONLINE · ${p ? p.back : 'ESC'} BACK`; },
+    onOpen: (on) => { if (state.mode === 'title') hud.show('title', !on); },
+    onPick: (level, go) => {
+      if (level !== LEVEL) { gotoLevel(level, go); return; }
+      courseUI.setOpen(false);
+      if (go === 'online') openLobby(); else beginCountdown();
+    },
+  });
   settingsUI = initSettings({
     presets: QUALITY, active: qName, auto: qAuto && !params.get('q'), recommended: gpu.rec, gpu: gpu.name, Q,
     isTitle: () => state.mode === 'title',
@@ -181,11 +193,15 @@ async function build() {
     onAudioKey: (code) => { if (code === 'KeyM') audio.toggleMute(); else if (code === 'KeyN') audio.toggleMusic(); },
   });
   refreshPrompts();
+  const go = params.get('go');   // arrived here from the course-select screen of another course
+  if (go) { params.delete('go'); history.replaceState(null, '', params.toString() ? '?' + params.toString() : location.pathname); }
   if (roomParam() && !params.has('demo')) openLobby(); // opened from an invite link
+  else if (go === 'online') openLobby();
+  else if (go === 'race') beginCountdown();
   if (params.has('demo')) { beginCountdown(); state.cd = 0.01; }
   const ff = parseFloat(params.get('ff') || '0');
   for (let t = 0; t < ff; t += 1 / 60) step(1 / 60);
-  window.__game = { state, player, rivals, track, terrain, renderer, scene, camera, post, audio, settingsUI };
+  window.__game = { state, player, rivals, track, terrain, renderer, scene, camera, post, audio, settingsUI, courseUI };
   last = performance.now();
   requestAnimationFrame(frame);
 }
@@ -283,6 +299,8 @@ const proxy = { s: 0, lat: 0, v: 0 };
 function step(dt) {
   oneShot = controls.poll();
   const st = state;
+  // The course-select screen owns the input while it is up (and nothing else is on top of it).
+  if (courseUI && courseUI.open && !(settingsUI && settingsUI.open)) { courseUI.handleShots(oneShot); oneShot = {}; }
   if (settingsUI) {
     settingsUI.update();
     if (settingsUI.open) {
@@ -319,8 +337,7 @@ function step(dt) {
   if (st.mode === 'title') {
     player.update(dt, IDLE);
     if (!menuOpen) {
-      if (oneShot.ArrowLeft || oneShot.ArrowRight) switchLevel(LEVEL, oneShot.ArrowLeft ? -1 : 1);   // ◀ ▶ change course
-      if (oneShot.Enter || oneShot.Space) beginCountdown();
+      if (oneShot.Enter || oneShot.Space) courseUI.setOpen(true);   // pick a course, then race
       else if (oneShot.KeyO) openLobby();
     }
     st.cine = 1;
@@ -557,7 +574,8 @@ function refreshPrompts() {
     if (!(id in kbText)) kbText[id] = el.textContent;
     el.textContent = padText || kbText[id];
   };
-  set('titleGo', p && `PRESS ${p.ok} TO RACE · ${p.online} FOR ONLINE`);
+  set('titleGo', p && `PRESS ${p.ok} TO PICK A COURSE · ${p.online} FOR ONLINE`);
+  if (courseUI) courseUI.refresh();
   set('titleKeys', p && `${p.name} · ${p.gas} GAS · ${p.brake} BRAKE · ${p.hand} HANDBRAKE · ${p.start} SETTINGS`);
   set('resAgain', online ? `PRESS ${p ? p.ok : 'ENTER'} FOR THE LOBBY · ${p ? p.back : 'ESC'} TO LEAVE` : p && `PRESS ${p.ok} TO RACE AGAIN · ${p.back} FOR TITLE`);
   if (settingsUI) settingsUI.refresh();
