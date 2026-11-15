@@ -12,7 +12,8 @@ const inl_guard = (x, sh, d) => x > sh + 12 && d > 18;
 export class Terrain {
   constructor(track, level = {}) {
     const n1 = (this.n1 = TN + 1);
-    const opt = { farms: true, mountainFrom: 120, mountainTo: 620, roadDip: 0, ...(level.terrain || {}) };
+    const opt = { farms: true, urban: false, mountainFrom: 120, mountainTo: 620, roadDip: 0, ...(level.terrain || {}) };
+    this.urban = !!opt.urban;
     const lakes = (this.lakes = level.lakes || []);
     const sea = (this.sea = level.sea || null);
     // Precompute the westernmost road X at each Z row so the ocean shoreline always stays seaward (-X) of the road,
@@ -83,12 +84,13 @@ export class Terrain {
         const m = Math.pow(smoothstep(opt.mountainFrom, opt.mountainTo, d), 1.4) * dry;
         const rid = ridged(x * 0.0016, z * 0.0016, 5);
         const big = fbm(x * 0.0007 + 5, z * 0.0007 + 9, 3);
-        // roadDip: on steep, twisting roads the 8 m height grid cannot follow the asphalt exactly, so the ground
-        // directly under the road is sunk a little further to keep it from poking through.
-        const h = th - 0.35 - opt.roadDip * (1 - smoothstep(4, 8, d))
-          + smoothstep(16, 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * 5
-          + m * (40 + 340 * (0.55 * rid + 0.45 * fbm(x * 0.003 + 2, z * 0.003 - 4, 4)) * (0.5 + big))
-          + smoothstep(800, 1500, r) * 230 * (0.5 + rid) * dry * smoothstep(28, 140, d);
+        // On urban courses, keep the metropolitan basin flat near sea level rather than ramping terrain up to elevated viaducts.
+        const baseY = opt.urban ? 2.85 : lerp(track.heightAt(x, z, idx), sy / sw, smoothstep(16, 45, d));
+        const mScale = opt.urban ? 0 : 1;
+        const h = baseY - (opt.urban ? 0 : 0.35 + opt.roadDip * (1 - smoothstep(4, 8, d)))
+          + smoothstep(16, 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * (opt.urban ? 0.9 : 5)
+          + mScale * m * (40 + 340 * (0.55 * rid + 0.45 * fbm(x * 0.003 + 2, z * 0.003 - 4, 4)) * (0.5 + big))
+          + mScale * smoothstep(950, 1520, r) * 230 * (0.5 + rid) * dry * smoothstep(28, 140, d);
         let hOut = lerp(h, bowl, wet);
         if (sea) {
           const inl = x - shoreAt(z); // > 0 inland, < 0 out to sea
@@ -245,8 +247,23 @@ export class Terrain {
             float cliffBand = (1. - smoothstep(0., 22., seaH)) * smoothstep(.32, .55, slope);
             col = mix(col, rock * vec3(.92, .94, .98), cliffBand * .75);
           }` : ''}
+          ${this.urban ? `
+          // Urban metropolitan ground: dark asphalt city grid, concrete plazas, and manicured park lawns.
+          {
+            float gx = abs(fract(wp.x / 64.) - .5) * 64., gz = abs(fract(wp.z / 64.) - .5) * 64.;
+            float street = 1. - smoothstep(3.8, 4.6, min(gx, gz));
+            vec3 pave = mix(vec3(.048, .052, .064), vec3(.082, .088, .105), n2) * (.88 + .24 * n3);
+            vec3 streetCol = vec3(.026, .029, .036) * (.85 + .3 * n3);
+            float park = smoothstep(.62, .76, n1) * (1. - street) * smoothstep(20., 45., vRoad);
+            vec3 parkLawn = mix(vec3(.022, .055, .028), vec3(.045, .095, .042), n2);
+            col = mix(mix(pave, streetCol, street), parkLawn, park);
+            // Concrete seawall / quay apron around Tokyo Bay shoreline
+            float quay = (1. - smoothstep(-.4, 3.3, wp.y)) * (1. - park);
+            col = mix(col, vec3(.11, .12, .14) * (.85 + .3 * n3), quay);
+            gRough = mix(.82, .52, street);
+          }` : ''}
           float gr = 1. - smoothstep(${(ROAD_HALF + 0.3).toFixed(2)}, ${(ROAD_HALF + 1.8).toFixed(2)}, vRoad);
-          col = mix(col, vec3(.2, .18, .155) * (.7 + .6 * n3), gr);
+          col = mix(col, ${this.urban ? 'vec3(.13, .14, .165)' : 'vec3(.2, .18, .155)'} * (.7 + .6 * n3), gr);
           diffuseColor.rgb = col;
         }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = gRough;');
@@ -278,17 +295,19 @@ export class Terrain {
 
 export const SHOULDER_W = 4, SHOULDER_DROP = 0.45;
 
-// Gravel verges that hide the seam between the asphalt ribbon and the height field.
-export function buildShoulders(track, material) {
+// Gravel verges (or concrete deck curbs on city courses) that hide the seam between the asphalt ribbon and the ground/viaduct.
+export function buildShoulders(track, material, level = {}) {
   const { N, px, py, pz, lx, lz } = track;
+  const urban = !!level.city;
+  const sw = urban ? 1.45 : SHOULDER_W, drop = urban ? 0.04 : SHOULDER_DROP;
   const pos = [], road = [], idx = [];
   for (const side of [1, -1]) {
     const base = pos.length / 3;
     for (let i = 0; i <= N; i++) {
       const k = i % N;
-      const a = side > 0 ? ROAD_HALF + SHOULDER_W : ROAD_HALF, b = side > 0 ? ROAD_HALF : ROAD_HALF + SHOULDER_W;
-      pos.push(px[k] + lx[k] * a * side, py[k] - (a > ROAD_HALF ? SHOULDER_DROP : 0.01), pz[k] + lz[k] * a * side);
-      pos.push(px[k] + lx[k] * b * side, py[k] - (b > ROAD_HALF ? SHOULDER_DROP : 0.01), pz[k] + lz[k] * b * side);
+      const a = side > 0 ? ROAD_HALF + sw : ROAD_HALF, b = side > 0 ? ROAD_HALF : ROAD_HALF + sw;
+      pos.push(px[k] + lx[k] * a * side, py[k] - (a > ROAD_HALF ? drop : 0.01), pz[k] + lz[k] * a * side);
+      pos.push(px[k] + lx[k] * b * side, py[k] - (b > ROAD_HALF ? drop : 0.01), pz[k] + lz[k] * b * side);
       road.push(a, b);
       if (i < N) { const v = base + i * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); }
     }
@@ -298,7 +317,8 @@ export function buildShoulders(track, material) {
   geo.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, material);
+  const mat = urban ? new THREE.MeshStandardMaterial({ color: 0x2c323e, roughness: 0.82, metalness: 0.1 }) : material;
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
 }

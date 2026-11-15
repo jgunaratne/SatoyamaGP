@@ -173,190 +173,193 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
     plaster: new THREE.MeshStandardMaterial({ color: 0xe9e4d8, roughness: 0.9, side: THREE.DoubleSide }),
   };
 
-  // ----- villages -----
-  const variants = [makeHouse(7.2, 3.6, 3.0, 1.35, 2.3), makeHouse(5.4, 3.6, 2.9, 1.25, 2.1), makeKura()];
-  const lists = [[], [], []], yardTrees = [], yards = [];
-  let houses = 0;
-  if (level.villages) {
-    // Coastal fishing-town houses placed along the landward side of specified road stretches
-    for (const [zMin, zMax, stride] of level.villages) {
-      for (let i = 25; i < track.N - 25; i += stride) {
-        const rx = track.px[i], rz = track.pz[i];
-        if (rz < zMin || rz > zMax) continue;
-        // Landward side (+X on the west-facing coast)
-        const lat = track.lx[i] > 0 ? 1 : -1;
-        const off = lat * (ROAD_HALF + 16 + (rng() * 8));
-        const hx = rx + track.lx[i] * off, hz = rz + track.lz[i] * off;
-        if (terrain.distAt(hx, hz) < 15 || terrain.lakeAt(hx, hz, 1.2) || terrain.slopeAt(hx, hz) > 0.45) continue;
-        const h = terrain.heightAt(hx, hz);
-        const ry = Math.atan2(-track.lx[i] * lat, -track.lz[i] * lat);
-        const v = rng() < 0.5 ? 0 : 1;
-        lists[v].push({ x: hx, y: h, z: hz, ry });
-        colliders.add(hx, hz, 4.3);
-        if (rng() < 0.45) {
-          const kx = hx + track.tx[i] * 11, kz = hz + track.tz[i] * 11;
-          if (terrain.distAt(kx, kz) > 13 && !terrain.lakeAt(kx, kz, 1.2)) {
-            lists[2].push({ x: kx, y: terrain.heightAt(kx, kz), z: kz, ry });
-            colliders.add(kx, kz, 3.4);
-          }
-        }
-        yards.push({ x: hx, z: hz, h, f: lat, ry });
-        yardTrees.push({ x: hx - track.tx[i] * 10, y: h, z: hz - track.tz[i] * 10, green: true });
-      }
-    }
-  }
-  for (const cell of terrain.cells) {
-    if (cell.d < 30 || cell.d > 95) continue;
-    if (vnoise(cell.ci * 0.21 + 3.3, cell.cj * 0.21 + 7.7) < 0.6) continue;
-    if (houses >= 70) break;
-    terrain.setCellType(cell, T_YARD);
-    const dz = track.pz[cell.idx] - cell.z;
-    const ry = dz > 0 ? 0 : Math.PI, f = dz > 0 ? 1 : -1;
-    const v = rng() < 0.55 ? 0 : 1, hx = cell.x - 3.5 * f, hz = cell.z - 2 * f;
-    lists[v].push({ x: hx, y: cell.h, z: hz, ry });
-    for (const o of [-5, 0, 5]) colliders.add(hx + o * (v ? 0.75 : 1), hz, 4.3);
-    if (rng() < 0.6) {
-      const kx = cell.x + 10.4 * f, kz = cell.z - 4.5 * f;
-      lists[2].push({ x: kx, y: cell.h, z: kz, ry });
-      colliders.add(kx, kz, 3.4);
-    }
-    yards.push({ x: cell.x, z: cell.z, h: cell.h, f, ry });
-    yardTrees.push({ x: cell.x - 12.5 * f, y: cell.h, z: cell.z + 8.5 * f, green: rng() < 0.5 });
-    houses++;
-  }
-  const add = (geo, mat, list) => { if (list.length) group.add(instanced(geo, mat, list)); };
-  // TRELLIS.2 buildings where available (long side fitted to the procedural footprint), else the procedural ones.
-  const houseM = [M('farmhouse_a'), M('farmhouse_b'), M('kura')], FOOT = [16.6, 13.2, 7.2];
-  const sets = [
-    [[variants[0].roof, mats.roofGrey], [variants[0].wall, mats.wall], [variants[0].wood, mats.wood], [variants[0].stone, mats.stone]],
-    [[variants[1].roof, mats.roofRed], [variants[1].wall, mats.wall], [variants[1].wood, mats.wood], [variants[1].stone, mats.stone]],
-    [[variants[2].roof, mats.roofGrey], [variants[2].plaster, mats.plaster], [variants[2].wood, mats.wood], [variants[2].stone, mats.stone]],
-  ];
-  sets.forEach((set, v) => {
-    const m = houseM[v];
-    if (m) {
-      const sc = FOOT[v] / Math.max(m.size.x, m.size.z);
-      group.add(scatter(m, lists[v].map((it) => ({ ...it, y: it.y - 0.12, s: sc })), { cell: 36, dist: [280, 680], cast: 2 }));
-    } else for (const [geo, mat] of set) add(geo, mat, lists[v]);
-  });
-
-  // ----- lived-in farmyards: parked kei trucks -----
-  const truckM = M('kei_truck');
-  if (truckM) {
-    const items = [], sc = 3.4 / truckM.size.z;
-    for (const y of yards) {
-      if (rng() > 0.5) continue;
-      const x = y.x + 4.5 * y.f, z = y.z + 9.5 * y.f;
-      items.push({ x, y: y.h, z, ry: y.ry + Math.PI / 2 + (rng() - 0.5) * 0.7, s: sc });
-      colliders.add(x, z, 1.7);
-    }
-    group.add(scatter(truckM, items, { cell: 36, dist: [180, 460], cast: 2 }));
-  }
-
-  // ----- torii gate over the start/finish line -----
   const frame = (i, lat = 0) => ({
     x: track.px[i] + track.lx[i] * lat, y: track.py[i], z: track.pz[i] + track.lz[i] * lat,
     ry: Math.atan2(-track.lz[i], track.lx[i]),
   });
-  const toriiM = M('torii');
-  if (toriiM) {
-    // pillars sit ~30% of the model width either side of centre; fit them to the collider spacing
-    const SP = 7.4, sc = (2 * SP) / (toriiM.size.x * 0.6), f = frame(0), t = new THREE.Group();
-    toriiM.levels.slice(0, 1).forEach((l) => { const m = new THREE.Mesh(l.geo, l.mat); m.castShadow = m.receiveShadow = true; t.add(m); });
-    t.scale.setScalar(sc); t.position.set(f.x, f.y - 0.3, f.z); t.rotation.y = f.ry;
-    group.add(t);
-    for (const sx of [1, -1]) colliders.add(f.x + track.lx[0] * sx * SP, f.z + track.lz[0] * sx * SP, 0.9);
-  } else {
-    const red = new THREE.MeshStandardMaterial({ color: 0xc9321a, roughness: 0.5 });
-    const black = new THREE.MeshStandardMaterial({ color: 0x15130f, roughness: 0.6 });
-    const t = new THREE.Group(), SP = 7.4;
-    const bent = (w, h, d, y, k) => {
-      const g = new THREE.BoxGeometry(w, h, d, 28, 1, 1), p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + k * p.getX(i) * p.getX(i));
-      g.computeVertexNormals(); g.translate(0, y, 0); return g;
-    };
-    const reds = [box(17, 0.6, 0.5, 0, 8.1, 0), bent(19.4, 0.7, 0.8, 10.3, 0.011), box(0.55, 1.6, 0.34, 0, 9.3, 0)];
-    const blacks = [bent(20, 0.3, 1.05, 10.82, 0.011)];
-    for (const sx of [1, -1]) {
-      const c = new THREE.CylinderGeometry(0.4, 0.5, 10.4, 20); c.rotateZ(sx * 0.03); c.translate(sx * SP, 5.2, 0); reds.push(c);
-      const bs = new THREE.CylinderGeometry(0.62, 0.66, 0.7, 20); bs.translate(sx * (SP + 0.15), 0.35, 0); blacks.push(bs);
-    }
-    const rm = new THREE.Mesh(mergeGeometries(reds), red), bm = new THREE.Mesh(mergeGeometries(blacks), black);
-    rm.castShadow = bm.castShadow = true; rm.receiveShadow = true;
-    t.add(rm, bm);
-    const f = frame(0);
-    t.position.set(f.x, f.y - 0.3, f.z); t.rotation.y = f.ry;
-    group.add(t);
-    for (const sx of [1, -1]) colliders.add(f.x + track.lx[0] * sx * SP, f.z + track.lz[0] * sx * SP, 0.7);
-  }
+  const lists = [[], [], []], yardTrees = [], yards = [];
+  let houses = 0;
 
-  // ----- stone lanterns lining the grid -----
-  {
-    const parts = [];
-    const cyl = (r0, r1, h, y, seg = 8) => { const g = new THREE.CylinderGeometry(r0, r1, h, seg); g.translate(0, y, 0); return g; };
-    parts.push(cyl(0.42, 0.5, 0.25, 0.125), cyl(0.16, 0.2, 1.0, 0.75), cyl(0.42, 0.2, 0.18, 1.34, 6), cyl(0.14, 0.14, 0.42, 1.64, 4));
-    const cap = new THREE.ConeGeometry(0.62, 0.42, 6); cap.translate(0, 2.06, 0); parts.push(cap);
-    const fin = new THREE.SphereGeometry(0.1, 8, 6); fin.translate(0, 2.33, 0); parts.push(fin);
-    const stoneGeo = mergeGeometries(parts.map((g) => g.toNonIndexed()));
-    const glowGeo = new THREE.BoxGeometry(0.36, 0.34, 0.36); glowGeo.translate(0, 1.64, 0);
-    const glow = new THREE.MeshStandardMaterial({ color: 0x241405, emissive: 0xffa040, emissiveIntensity: 5 });
-    const list = [];
-    for (let n = 1; n <= 5; n++) for (const sx of [1, -1]) {
-      const i = (track.N - n * 6) % track.N, f = frame(i, sx * (ROAD_HALF + 2.3));
-      list.push({ x: f.x, y: f.y - 0.3, z: f.z });
-      colliders.add(f.x, f.z, 0.5);
-    }
-    const lanM = M('lantern');
-    if (lanM) group.add(scatter(lanM, list.map((it) => ({ ...it, s: 2.45 / lanM.size.y })), { cell: 24, dist: [160, 400], cast: 2 }));
-    else group.add(instanced(stoneGeo, mats.stone, list), instanced(glowGeo, glow, list, false));
-  }
-
-  // ----- wayside shrines -----
-  const hokM = M('hokora');
-  if (hokM) {
-    const items = [], OFF = ROAD_HALF + 5.4;
-    for (let i = 95; i < track.N - 60; i += Math.round(track.N / 9)) {
-      const f = frame(i, OFF);
-      items.push({ x: f.x, y: terrain.heightAt(f.x, f.z) - 0.05, z: f.z, ry: Math.atan2(-track.lx[i], -track.lz[i]), s: 2.3 / hokM.size.y });
-      colliders.add(f.x, f.z, 0.9);
-    }
-    group.add(scatter(hokM, items, { cell: 24, dist: [170, 420], cast: 2 }));
-  }
-
-  // ----- utility poles + sagging wires -----
-  {
-    const parts = [];
-    const pole = new THREE.CylinderGeometry(0.13, 0.19, 9.6, 10); pole.translate(0, 4.8, 0); parts.push(pole);
-    parts.push(box(2.0, 0.12, 0.12, 0, 9.0, 0), box(1.4, 0.1, 0.1, 0, 8.2, 0));
-    const tr = new THREE.CylinderGeometry(0.28, 0.28, 0.75, 10); tr.translate(0.4, 7.3, 0); parts.push(tr);
-    const geo = mergeGeometries(parts.map((g) => g.toNonIndexed()));
-    const mat = new THREE.MeshStandardMaterial({ color: 0x6c6a66, roughness: 0.8 });
-    const list = [], OFF = -(ROAD_HALF + 4.6);
-    for (let i = 10; i < track.N - 10; i += 19) {
-      const f = frame(i, OFF);
-      list.push({ x: f.x, y: terrain.heightAt(f.x, f.z) - 0.1, z: f.z, ry: f.ry, i });
-      colliders.add(f.x, f.z, 0.35);
-    }
-    group.add(instanced(geo, mat, list));
-    const wp = [];
-    for (let n = 0; n < list.length; n++) {
-      const a = list[n], b = list[(n + 1) % list.length];
-      const la = [track.lx[a.i], track.lz[a.i]], lb = [track.lx[b.i], track.lz[b.i]];
-      for (const [off, hy] of [[-0.9, 9.1], [0, 9.1], [0.9, 9.1], [-0.6, 8.3], [0.6, 8.3]]) {
-        const SEG = 8; let px = 0, py = 0, pz = 0;
-        for (let s = 0; s <= SEG; s++) {
-          const t = s / SEG;
-          const x = (a.x + la[0] * off) * (1 - t) + (b.x + lb[0] * off) * t;
-          const z = (a.z + la[1] * off) * (1 - t) + (b.z + lb[1] * off) * t;
-          const y = (a.y + hy) * (1 - t) + (b.y + hy) * t - 0.8 * 4 * t * (1 - t);
-          if (s > 0) wp.push(px, py, pz, x, y, z);
-          px = x; py = y; pz = z;
+  if (!level.city) {
+    // ----- villages -----
+    const variants = [makeHouse(7.2, 3.6, 3.0, 1.35, 2.3), makeHouse(5.4, 3.6, 2.9, 1.25, 2.1), makeKura()];
+    if (level.villages) {
+      // Coastal fishing-town houses placed along the landward side of specified road stretches
+      for (const [zMin, zMax, stride] of level.villages) {
+        for (let i = 25; i < track.N - 25; i += stride) {
+          const rx = track.px[i], rz = track.pz[i];
+          if (rz < zMin || rz > zMax) continue;
+          // Landward side (+X on the west-facing coast)
+          const lat = track.lx[i] > 0 ? 1 : -1;
+          const off = lat * (ROAD_HALF + 16 + (rng() * 8));
+          const hx = rx + track.lx[i] * off, hz = rz + track.lz[i] * off;
+          if (terrain.distAt(hx, hz) < 15 || terrain.lakeAt(hx, hz, 1.2) || terrain.slopeAt(hx, hz) > 0.45) continue;
+          const h = terrain.heightAt(hx, hz);
+          const ry = Math.atan2(-track.lx[i] * lat, -track.lz[i] * lat);
+          const v = rng() < 0.5 ? 0 : 1;
+          lists[v].push({ x: hx, y: h, z: hz, ry });
+          colliders.add(hx, hz, 4.3);
+          if (rng() < 0.45) {
+            const kx = hx + track.tx[i] * 11, kz = hz + track.tz[i] * 11;
+            if (terrain.distAt(kx, kz) > 13 && !terrain.lakeAt(kx, kz, 1.2)) {
+              lists[2].push({ x: kx, y: terrain.heightAt(kx, kz), z: kz, ry });
+              colliders.add(kx, kz, 3.4);
+            }
+          }
+          yards.push({ x: hx, z: hz, h, f: lat, ry });
+          yardTrees.push({ x: hx - track.tx[i] * 10, y: h, z: hz - track.tz[i] * 10, green: true });
         }
       }
     }
-    const wg = new THREE.BufferGeometry();
-    wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
-    group.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0c0c0c })));
+    for (const cell of terrain.cells) {
+      if (cell.d < 30 || cell.d > 95) continue;
+      if (vnoise(cell.ci * 0.21 + 3.3, cell.cj * 0.21 + 7.7) < 0.6) continue;
+      if (houses >= 70) break;
+      terrain.setCellType(cell, T_YARD);
+      const dz = track.pz[cell.idx] - cell.z;
+      const ry = dz > 0 ? 0 : Math.PI, f = dz > 0 ? 1 : -1;
+      const v = rng() < 0.55 ? 0 : 1, hx = cell.x - 3.5 * f, hz = cell.z - 2 * f;
+      lists[v].push({ x: hx, y: cell.h, z: hz, ry });
+      for (const o of [-5, 0, 5]) colliders.add(hx + o * (v ? 0.75 : 1), hz, 4.3);
+      if (rng() < 0.6) {
+        const kx = cell.x + 10.4 * f, kz = cell.z - 4.5 * f;
+        lists[2].push({ x: kx, y: cell.h, z: kz, ry });
+        colliders.add(kx, kz, 3.4);
+      }
+      yards.push({ x: cell.x, z: cell.z, h: cell.h, f, ry });
+      yardTrees.push({ x: cell.x - 12.5 * f, y: cell.h, z: cell.z + 8.5 * f, green: rng() < 0.5 });
+      houses++;
+    }
+    const add = (geo, mat, list) => { if (list.length) group.add(instanced(geo, mat, list)); };
+    // TRELLIS.2 buildings where available (long side fitted to the procedural footprint), else the procedural ones.
+    const houseM = [M('farmhouse_a'), M('farmhouse_b'), M('kura')], FOOT = [16.6, 13.2, 7.2];
+    const sets = [
+      [[variants[0].roof, mats.roofGrey], [variants[0].wall, mats.wall], [variants[0].wood, mats.wood], [variants[0].stone, mats.stone]],
+      [[variants[1].roof, mats.roofRed], [variants[1].wall, mats.wall], [variants[1].wood, mats.wood], [variants[1].stone, mats.stone]],
+      [[variants[2].roof, mats.roofGrey], [variants[2].plaster, mats.plaster], [variants[2].wood, mats.wood], [variants[2].stone, mats.stone]],
+    ];
+    sets.forEach((set, v) => {
+      const m = houseM[v];
+      if (m) {
+        const sc = FOOT[v] / Math.max(m.size.x, m.size.z);
+        group.add(scatter(m, lists[v].map((it) => ({ ...it, y: it.y - 0.12, s: sc })), { cell: 36, dist: [280, 680], cast: 2 }));
+      } else for (const [geo, mat] of set) add(geo, mat, lists[v]);
+    });
+
+    // ----- lived-in farmyards: parked kei trucks -----
+    const truckM = M('kei_truck');
+    if (truckM) {
+      const items = [], sc = 3.4 / truckM.size.z;
+      for (const y of yards) {
+        if (rng() > 0.5) continue;
+        const x = y.x + 4.5 * y.f, z = y.z + 9.5 * y.f;
+        items.push({ x, y: y.h, z, ry: y.ry + Math.PI / 2 + (rng() - 0.5) * 0.7, s: sc });
+        colliders.add(x, z, 1.7);
+      }
+      group.add(scatter(truckM, items, { cell: 36, dist: [180, 460], cast: 2 }));
+    }
+
+    // ----- torii gate over the start/finish line -----
+    const toriiM = M('torii');
+    if (toriiM) {
+      // pillars sit ~30% of the model width either side of centre; fit them to the collider spacing
+      const SP = 7.4, sc = (2 * SP) / (toriiM.size.x * 0.6), f = frame(0), t = new THREE.Group();
+      toriiM.levels.slice(0, 1).forEach((l) => { const m = new THREE.Mesh(l.geo, l.mat); m.castShadow = m.receiveShadow = true; t.add(m); });
+      t.scale.setScalar(sc); t.position.set(f.x, f.y - 0.3, f.z); t.rotation.y = f.ry;
+      group.add(t);
+      for (const sx of [1, -1]) colliders.add(f.x + track.lx[0] * sx * SP, f.z + track.lz[0] * sx * SP, 0.9);
+    } else {
+      const red = new THREE.MeshStandardMaterial({ color: 0xc9321a, roughness: 0.5 });
+      const black = new THREE.MeshStandardMaterial({ color: 0x15130f, roughness: 0.6 });
+      const t = new THREE.Group(), SP = 7.4;
+      const bent = (w, h, d, y, k) => {
+        const g = new THREE.BoxGeometry(w, h, d, 28, 1, 1), p = g.attributes.position;
+        for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + k * p.getX(i) * p.getX(i));
+        g.computeVertexNormals(); g.translate(0, y, 0); return g;
+      };
+      const reds = [box(17, 0.6, 0.5, 0, 8.1, 0), bent(19.4, 0.7, 0.8, 10.3, 0.011), box(0.55, 1.6, 0.34, 0, 9.3, 0)];
+      const blacks = [bent(20, 0.3, 1.05, 10.82, 0.011)];
+      for (const sx of [1, -1]) {
+        const c = new THREE.CylinderGeometry(0.4, 0.5, 10.4, 20); c.rotateZ(sx * 0.03); c.translate(sx * SP, 5.2, 0); reds.push(c);
+        const bs = new THREE.CylinderGeometry(0.62, 0.66, 0.7, 20); bs.translate(sx * (SP + 0.15), 0.35, 0); blacks.push(bs);
+      }
+      const rm = new THREE.Mesh(mergeGeometries(reds), red), bm = new THREE.Mesh(mergeGeometries(blacks), black);
+      rm.castShadow = bm.castShadow = true; rm.receiveShadow = true;
+      t.add(rm, bm);
+      const f = frame(0);
+      t.position.set(f.x, f.y - 0.3, f.z); t.rotation.y = f.ry;
+      group.add(t);
+      for (const sx of [1, -1]) colliders.add(f.x + track.lx[0] * sx * SP, f.z + track.lz[0] * sx * SP, 0.7);
+    }
+
+    // ----- stone lanterns lining the grid -----
+    {
+      const parts = [];
+      const cyl = (r0, r1, h, y, seg = 8) => { const g = new THREE.CylinderGeometry(r0, r1, h, seg); g.translate(0, y, 0); return g; };
+      parts.push(cyl(0.42, 0.5, 0.25, 0.125), cyl(0.16, 0.2, 1.0, 0.75), cyl(0.42, 0.2, 0.18, 1.34, 6), cyl(0.14, 0.14, 0.42, 1.64, 4));
+      const cap = new THREE.ConeGeometry(0.62, 0.42, 6); cap.translate(0, 2.06, 0); parts.push(cap);
+      const fin = new THREE.SphereGeometry(0.1, 8, 6); fin.translate(0, 2.33, 0); parts.push(fin);
+      const stoneGeo = mergeGeometries(parts.map((g) => g.toNonIndexed()));
+      const glowGeo = new THREE.BoxGeometry(0.36, 0.34, 0.36); glowGeo.translate(0, 1.64, 0);
+      const glow = new THREE.MeshStandardMaterial({ color: 0x241405, emissive: 0xffa040, emissiveIntensity: 5 });
+      const list = [];
+      for (let n = 1; n <= 5; n++) for (const sx of [1, -1]) {
+        const i = (track.N - n * 6) % track.N, f = frame(i, sx * (ROAD_HALF + 2.3));
+        list.push({ x: f.x, y: f.y - 0.3, z: f.z });
+        colliders.add(f.x, f.z, 0.5);
+      }
+      const lanM = M('lantern');
+      if (lanM) group.add(scatter(lanM, list.map((it) => ({ ...it, s: 2.45 / lanM.size.y })), { cell: 24, dist: [160, 400], cast: 2 }));
+      else group.add(instanced(stoneGeo, mats.stone, list), instanced(glowGeo, glow, list, false));
+    }
+
+    // ----- wayside shrines -----
+    const hokM = M('hokora');
+    if (hokM) {
+      const items = [], OFF = ROAD_HALF + 5.4;
+      for (let i = 95; i < track.N - 60; i += Math.round(track.N / 9)) {
+        const f = frame(i, OFF);
+        items.push({ x: f.x, y: terrain.heightAt(f.x, f.z) - 0.05, z: f.z, ry: Math.atan2(-track.lx[i], -track.lz[i]), s: 2.3 / hokM.size.y });
+        colliders.add(f.x, f.z, 0.9);
+      }
+      group.add(scatter(hokM, items, { cell: 24, dist: [170, 420], cast: 2 }));
+    }
+
+    // ----- utility poles + sagging wires -----
+    {
+      const parts = [];
+      const pole = new THREE.CylinderGeometry(0.13, 0.19, 9.6, 10); pole.translate(0, 4.8, 0); parts.push(pole);
+      parts.push(box(2.0, 0.12, 0.12, 0, 9.0, 0), box(1.4, 0.1, 0.1, 0, 8.2, 0));
+      const tr = new THREE.CylinderGeometry(0.28, 0.28, 0.75, 10); tr.translate(0.4, 7.3, 0); parts.push(tr);
+      const geo = mergeGeometries(parts.map((g) => g.toNonIndexed()));
+      const mat = new THREE.MeshStandardMaterial({ color: 0x6c6a66, roughness: 0.8 });
+      const list = [], OFF = -(ROAD_HALF + 4.6);
+      for (let i = 10; i < track.N - 10; i += 19) {
+        const f = frame(i, OFF);
+        list.push({ x: f.x, y: terrain.heightAt(f.x, f.z) - 0.1, z: f.z, ry: f.ry, i });
+        colliders.add(f.x, f.z, 0.35);
+      }
+      group.add(instanced(geo, mat, list));
+      const wp = [];
+      for (let n = 0; n < list.length; n++) {
+        const a = list[n], b = list[(n + 1) % list.length];
+        const la = [track.lx[a.i], track.lz[a.i]], lb = [track.lx[b.i], track.lz[b.i]];
+        for (const [off, hy] of [[-0.9, 9.1], [0, 9.1], [0.9, 9.1], [-0.6, 8.3], [0.6, 8.3]]) {
+          const SEG = 8; let px = 0, py = 0, pz = 0;
+          for (let s = 0; s <= SEG; s++) {
+            const t = s / SEG;
+            const x = (a.x + la[0] * off) * (1 - t) + (b.x + lb[0] * off) * t;
+            const z = (a.z + la[1] * off) * (1 - t) + (b.z + lb[1] * off) * t;
+            const y = (a.y + hy) * (1 - t) + (b.y + hy) * t - 0.8 * 4 * t * (1 - t);
+            if (s > 0) wp.push(px, py, pz, x, y, z);
+            px = x; py = y; pz = z;
+          }
+        }
+      }
+      const wg = new THREE.BufferGeometry();
+      wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
+      group.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0c0c0c })));
+    }
   }
 
   // ----- checkpoint arches -----

@@ -113,9 +113,9 @@ export class Vehicle {
     this.x += this.vx * dt; this.z += this.vz * dt;
 
     // --- guardrails ---
-    const i = this.idx, side = tr.rail[i];
-    if (side) {
-      const lat = tr.lateral(this.x, this.z, i), lim = RAIL_OFF - 1.05;
+    const i = this.idx, rawSide = tr.rail[i];
+    if (rawSide) {
+      const lat = tr.lateral(this.x, this.z, i), side = rawSide === 2 ? (lat >= 0 ? 1 : -1) : rawSide, lim = RAIL_OFF - 1.05;
       if (lat * side > lim && lat * side < RAIL_OFF + 2.5) {
         const push = lat * side - lim;
         this.x -= tr.lx[i] * push * side; this.z -= tr.lz[i] * push * side;

@@ -17,6 +17,7 @@ import { EngineAudio, RACE_TRACKS } from './audio.js';
 import { Models, updateLods } from './models.js';
 import { currentLevel, gotoLevel, showLevelName, initCourseSelect } from './levels.js';
 import { buildLakes } from './lakes.js';
+import { buildCity } from './city.js';
 import { initSettings, resolveQuality, storedPreset, clearCustom } from './settings.js';
 import { Colliders, clamp, lerp, smoothstep, wrapAngle, gTime, initNoise } from './util.js';
 
@@ -142,11 +143,12 @@ async function build() {
   sky.sun.shadow.mapSize.set(Q.shadow, Q.shadow);
   await tick('LOADING 3D MODELS', 46);
   if (Q.models !== 'off' && !params.has('nomodels')) await models.load(Q.models === 'lite' ? 1 : 0, (f) => { loadBar.style.width = 46 + f * 6 + '%'; });
-  await tick('BUILDING VILLAGES', 52);
+  await tick(LEVEL.city ? 'RAISING SKYSCRAPERS' : 'BUILDING VILLAGES', 52);
   const props = buildProps(scene, track, terrain, colliders, models, Q, LEVEL);
-  await tick('FLOODING RICE PADDIES', 62);
+  buildCity(scene, track, terrain, colliders, LEVEL, Q);
+  await tick(LEVEL.city ? 'PAVING EXPRESSWAYS' : 'FLOODING RICE PADDIES', 62);
   const tmat = terrain.buildMaterial(Q.lowq);
-  scene.add(terrain.buildMesh(), buildShoulders(track, tmat), buildRoad(track), buildGuardrails(track));
+  scene.add(terrain.buildMesh(), buildShoulders(track, tmat, LEVEL), buildRoad(track), buildGuardrails(track));
   await tick('PLANTING SAKURA', 74);
   flora = buildFlora(scene, track, terrain, colliders, props, Q, models, LEVEL);
   buildLakes(scene, LEVEL, terrain, models, colliders);
@@ -154,11 +156,18 @@ async function build() {
   const world = { track, terrain, colliders };
   // REDUCED keeps the cheap procedural cars: the clustered LODs are meant for distance, not for the hero object
   const carModel = (id) => (Q.models === 'full' ? models.get(id) : null);
-  playerCar = buildCar(0xc2101c, carModel('car_red'));
+  const isNight = !!LEVEL.night;
+  playerCar = buildCar(0xc2101c, carModel('car_red'), isNight);
+  if (isNight) {
+    const hl = new THREE.SpotLight(0xfff3dd, 55, 130, 0.52, 0.55, 1.1);
+    hl.position.set(0, 0.78, 2.1);
+    hl.target.position.set(0, -0.35, 34);
+    playerCar.group.add(hl, hl.target);
+  }
   scene.add(playerCar.group);
   player = new Vehicle(playerCar, world);
   RIVALS.forEach((r) => {
-    const car = buildCar(r.color, carModel(r.model)); scene.add(car.group);
+    const car = buildCar(r.color, carModel(r.model), isNight); scene.add(car.group);
     const rv = new Rival(car, track, 0, 0, r.skill, r.name); rv.css = r.css;
     rv.slot = rivals.length; rivals.push(rv);
   });

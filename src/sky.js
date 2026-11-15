@@ -3,16 +3,19 @@ import { NOISE_TEX_GLSL, gNoise, gTime, fbm } from './util.js';
 
 // Time of day. Each course can override any of these (levels.js `sky`); the defaults are Sakura Valley's
 // mid-afternoon. el/az are the sun's elevation and its bearing from the start straight, in degrees.
-const SKY = {
+const SKY_DEFAULTS = {
   el: 23, az: 32, sunColor: [1, 0.81, 0.6], sunIntensity: 7.5, hemi: 0.35, env: 0.85,
-  zenith: [0.085, 0.2, 0.5], horizon: [0.5, 0.5, 0.58], glow: [1.5, 0.82, 0.4], openSea: false,
+  hemiSky: 0x9fb6ff, hemiGround: 0x4a3d2c,
+  zenith: [0.085, 0.2, 0.5], horizon: [0.5, 0.5, 0.58], glow: [1.5, 0.82, 0.4],
+  openSea: false, night: false, city: false,
   cloudShade: [0.36, 0.31, 0.4], cloudLit: [1.55, 1.12, 0.78], fog: [0.6, 0.52, 0.5], fogDensity: 0.00042,
 };
+const SKY = { ...SKY_DEFAULTS };
 const rad = (d) => (d * Math.PI) / 180;
 export const SUN_DIR = new THREE.Vector3();
 export const FOG_COLOR = new THREE.Color();
 export function setSky(cfg = {}) {
-  Object.assign(SKY, cfg);
+  Object.assign(SKY, SKY_DEFAULTS, cfg);
   FOG_COLOR.setRGB(...SKY.fog);
   orientSun(0);
 }
@@ -27,7 +30,7 @@ function skyMaterial(lowq) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     uniforms: {
-      uSun: { value: SUN_DIR }, uTime: gTime, uNoise: gNoise,
+      uSun: { value: SUN_DIR }, uTime: gTime, uNoise: gNoise, uNight: { value: SKY.night ? 1 : 0 },
       uZen: { value: new THREE.Vector3(...SKY.zenith) }, uHor: { value: new THREE.Vector3(...SKY.horizon) }, uGlow: { value: new THREE.Vector3(...SKY.glow) },
       uCloudS: { value: new THREE.Vector3(...SKY.cloudShade) }, uCloudL: { value: new THREE.Vector3(...SKY.cloudLit) }, uFog: { value: new THREE.Vector3(...SKY.fog) },
     },
@@ -35,7 +38,7 @@ function skyMaterial(lowq) {
       varying vec3 vDir;
       void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
     fragmentShader: /* glsl */ `
-      varying vec3 vDir; uniform vec3 uSun; uniform float uTime;
+      varying vec3 vDir; uniform vec3 uSun; uniform float uTime, uNight;
       uniform vec3 uZen, uHor, uGlow, uCloudS, uCloudL, uFog;
       ${NOISE_TEX_GLSL}
       void main(){
@@ -46,9 +49,17 @@ function skyMaterial(lowq) {
         vec3 zen = uZen;
         vec3 hor = mix(uHor, uGlow, sunAmt * .85 + .15 * sd);
         vec3 col = mix(hor, zen, pow(h, .42));
-        col += vec3(1., .55, .25) * pow(sd, 48.) * .9;
-        col += vec3(1., .8, .55) * pow(sd, 700.) * 4.;
-        col += vec3(1., .85, .6) * smoothstep(.99935, .9997, sd) * 55.;
+        if (uNight > .5) {
+          // Silver full moon halo + disc + high-zenith stars
+          col += vec3(.32, .42, .72) * pow(sd, 36.) * .45;
+          col += vec3(.88, .93, 1.) * smoothstep(.99945, .99978, sd) * 5.2;
+          float st = smoothstep(.986, .998, tn0(floor(d.xz / max(d.y + .25, .15) * 260.)));
+          col += vec3(.75, .84, 1.) * st * smoothstep(.18, .55, h) * .55;
+        } else {
+          col += vec3(1., .55, .25) * pow(sd, 48.) * .9;
+          col += vec3(1., .8, .55) * pow(sd, 700.) * 4.;
+          col += vec3(1., .85, .6) * smoothstep(.99935, .9997, sd) * 55.;
+        }
         if (d.y > .005) {
           vec2 p = d.xz / (d.y + .14) * 1.15 + vec2(uTime * .0035, uTime * .0012);
           vec2 pb = vec2(p.y, -p.x) * 1.9 + 3.7;
@@ -57,8 +68,8 @@ function skyMaterial(lowq) {
           float dens = smoothstep(.47, .66, c + .05 * tn(p * 40.));
           float lit = clamp((c - c2) * 5. + .55, 0., 1.);
           vec3 cc = mix(uCloudS, uCloudL, lit);
-          cc += vec3(1.2, .6, .25) * sunAmt * (1. - dens * .6);
-          col = mix(col, cc, dens * .9 * smoothstep(.005, .16, d.y));
+          cc += (uNight > .5 ? vec3(.22, .12, .32) : vec3(1.2, .6, .25)) * sunAmt * (1. - dens * .6);
+          col = mix(col, cc, dens * (uNight > .5 ? .55 : .9) * smoothstep(.005, .16, d.y));
         }
         col = mix(col, uFog, smoothstep(.0, -.08, d.y));
         gl_FragColor = vec4(col, 1.);
@@ -88,17 +99,21 @@ export function buildSky(scene, renderer, lowq, start) {
   const sc = sun.shadow.camera;
   sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 1; sc.far = 800;
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0x9fb6ff, 0x4a3d2c, SKY.hemi));
+  scene.add(new THREE.HemisphereLight(SKY.hemiSky, SKY.hemiGround, SKY.hemi));
 
   scene.add(buildBackdrop(start));
   return { sky, sun };
 }
 
-// Hazy silhouette ridges + a snow-capped volcano on the horizon.
+// Hazy silhouette ridges + a snow-capped volcano on the horizon (plus a 360-degree metropolitan tower skyline on city courses).
 function buildBackdrop(start) {
   const g = new THREE.Group();
   const pos = [], col = [], idx = [];
-  const layers = [
+  const layers = SKY.night ? [
+    { R: 2800, h: 190, top: [0.025, 0.032, 0.075], base: [0.075, 0.068, 0.14], f: 5.5, o: 1.3 },
+    { R: 3600, h: 320, top: [0.035, 0.045, 0.095], base: [0.09, 0.08, 0.16], f: 4.2, o: 7.7 },
+    { R: 4500, h: 520, top: [0.05, 0.06, 0.12], base: [0.11, 0.09, 0.18], f: 3.1, o: 4.1 },
+  ] : [
     { R: 2500, h: 330, top: [0.085, 0.12, 0.15], base: [0.42, 0.38, 0.39], f: 5.5, o: 1.3 },
     { R: 3300, h: 520, top: [0.2, 0.24, 0.31], base: [0.52, 0.46, 0.46], f: 4.2, o: 7.7 },
     { R: 4300, h: 760, top: [0.34, 0.37, 0.46], base: [0.6, 0.52, 0.5], f: 3.1, o: 4.1 },
@@ -120,6 +135,25 @@ function buildBackdrop(start) {
       pos.push(cx * L.R, -120, sz * L.R, cx * L.R, hh, sz * L.R);
       col.push(...L.base, ...L.top);
       if (i < SEG) { const v = base + i * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); }
+    }
+  }
+  if (SKY.city) {
+    // Distant stepped high-rise silhouette ring around the metropolitan horizon
+    for (const [R, maxH, count, seed, topC, baseC] of [
+      [2250, 210, 220, 3.1, [0.05, 0.08, 0.16], [0.16, 0.11, 0.22]],
+      [1920, 165, 180, 8.7, [0.03, 0.05, 0.11], [0.13, 0.10, 0.20]],
+    ]) {
+      for (let i = 0; i < count; i++) {
+        const a0 = (i / count) * Math.PI * 2, da = (Math.PI * 2 / count) * 0.78;
+        const hVal = Math.abs(Math.sin(i * 12.9898 + seed) * 43758.5453) % 1;
+        if (hVal < 0.22) continue;
+        const th = 35 + Math.pow(hVal, 1.5) * maxH;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a0 + da), s1 = Math.sin(a0 + da);
+        const v = pos.length / 3;
+        pos.push(c0 * R, -40, s0 * R, c0 * R, th, s0 * R, c1 * R, -40, s1 * R, c1 * R, th, s1 * R);
+        col.push(...baseC, ...topC, ...baseC, ...topC);
+        idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      }
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -147,8 +181,8 @@ function buildBackdrop(start) {
     const snow = THREE.MathUtils.smoothstep(y, line - 60, line + 90);
     const haze = 1 - Math.min(1, y / (H * 0.55));
     const lit = 0.72 + 0.4 * Math.max(0, nrm.getX(i) * SUN_DIR.x + nrm.getY(i) * SUN_DIR.y + nrm.getZ(i) * SUN_DIR.z);
-    const rock = [0.3 + 0.28 * haze, 0.33 + 0.2 * haze, 0.44 + 0.07 * haze];
-    const sn = [1.25 * lit, 1.12 * lit, 1.05 * lit];
+    const rock = SKY.night ? [0.04 + 0.07 * haze, 0.05 + 0.06 * haze, 0.11 + 0.06 * haze] : [0.3 + 0.28 * haze, 0.33 + 0.2 * haze, 0.44 + 0.07 * haze];
+    const sn = SKY.night ? [0.22 * lit, 0.26 * lit, 0.38 * lit] : [1.25 * lit, 1.12 * lit, 1.05 * lit];
     c[i * 3] = rock[0] + (sn[0] - rock[0]) * snow;
     c[i * 3 + 1] = rock[1] + (sn[1] - rock[1]) * snow;
     c[i * 3 + 2] = rock[2] + (sn[2] - rock[2]) * snow;

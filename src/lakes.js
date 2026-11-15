@@ -3,9 +3,9 @@ import { NOISE_TEX_GLSL, gNoise, gTime, mulberry32 } from './util.js';
 import { scatter } from './models.js';
 import { TSIZE, TN } from './terrain.js';
 
-// Calm lake water: one flat ellipse per lake. Layered moving ripples perturb the normal in the fragment shader.
-function waterMaterial() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x0a2a30, roughness: 0.07, metalness: 0, envMapIntensity: 1.5 });
+// Calm lake / bay water: one flat ellipse per water body. Layered moving ripples perturb the normal in the fragment shader.
+function waterMaterial(night = false) {
+  const mat = new THREE.MeshStandardMaterial({ color: night ? 0x091830 : 0x0a2a30, roughness: night ? 0.05 : 0.07, metalness: night ? 0.15 : 0, envMapIntensity: night ? 2.4 : 1.5 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = gTime;
     sh.vertexShader = sh.vertexShader
@@ -33,10 +33,12 @@ function waterMaterial() {
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float facing = clamp(dot(normalize(vViewPosition), normalize((viewMatrix * vec4(0., 1., 0., 0.)).xyz)), 0., 1.);
-          diffuseColor.rgb = mix(vec3(.012, .05, .06), vec3(.03, .15, .16), facing * facing);
+          diffuseColor.rgb = ${night
+            ? 'mix(vec3(.018, .032, .078), vec3(.045, .085, .165), facing)'
+            : 'mix(vec3(.012, .05, .06), vec3(.03, .15, .16), facing * facing)'};
         }`);
   };
-  mat.customProgramCacheKey = () => 'lakeWater';
+  mat.customProgramCacheKey = () => (night ? 'lakeWaterNight' : 'lakeWater');
   return mat;
 }
 
@@ -139,7 +141,7 @@ export function buildLakes(scene, level, terrain, models, colliders) {
   scene.add(group);
 
   if (hasLakes) {
-    const mat = waterMaterial();
+    const mat = waterMaterial(!!level.night);
     for (const L of level.lakes) {
       const geo = new THREE.CircleGeometry(1, 96);
       geo.rotateX(-Math.PI / 2);

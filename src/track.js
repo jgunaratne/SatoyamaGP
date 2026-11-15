@@ -63,7 +63,7 @@ export class Track {
       k.set(tmp);
     }
 
-    // Guardrails on the outside of the tighter corners. +1 = left side, -1 = right side.
+    // Guardrails on the outside of the tighter corners (+1 = left, -1 = right), and on both sides (2) of elevated viaducts.
     const raw = new Int8Array(N), rail = (this.rail = new Int8Array(N));
     for (let i = 0; i < N; i++) raw[i] = k[i] > 1 / 240 ? -1 : k[i] < -1 / 240 ? 1 : 0;
     for (let i = 0; i < N; i++) {
@@ -71,6 +71,9 @@ export class Track {
       for (let o = -14; o <= 14; o++) { const j = (i + o + N) % N; if (!rail[j]) rail[j] = raw[i]; }
     }
     for (let i = -20; i <= 20; i++) rail[(i + N) % N] = 0; // keep the start gate clear
+    if (def.viaductY != null) {
+      for (let i = 0; i < N; i++) if (py[i] > def.viaductY) rail[i] = 2;
+    }
 
     this.coarseStep = 8;
     this._s = { x: 0, y: 0, z: 0, tx: 0, tz: 1, lx: 1, lz: 0, k: 0, slope: 0 };
@@ -189,22 +192,26 @@ export function buildRoad(track) {
 export function buildGuardrails(track) {
   const { N, px, py, pz, lx, lz, rail } = track;
   const pos = [], idx = [], posts = [];
-  // find a starting index that is not inside a run
-  let start = 0; while (start < N && rail[start]) start++;
-  let prev = 0, base = 0;
-  for (let n = 0; n <= N; n++) {
-    const i = (start + n) % N, s = n === N ? 0 : rail[i];
-    if (s) {
-      const ox = px[i] + lx[i] * RAIL_OFF * s, oz = pz[i] + lz[i] * RAIL_OFF * s;
-      const v = pos.length / 3;
-      pos.push(ox, py[i] + 0.42, oz, ox, py[i] + 0.6, oz + 0, ox, py[i] + 0.78, oz);
-      // slight W-beam bulge on the middle row, toward the road
-      pos[pos.length - 6] -= lx[i] * 0.05 * s; pos[pos.length - 4] -= lz[i] * 0.05 * s;
-      if (prev === s && v - base >= 3) idx.push(v - 3, v - 2, v, v - 2, v + 1, v, v - 2, v - 1, v + 1, v - 1, v + 2, v + 1);
-      else base = v;
-      if (n % 2 === 0) posts.push(ox + lx[i] * 0.08 * s, py[i] + 0.15, oz + lz[i] * 0.08 * s, Math.atan2(track.tx[i], track.tz[i]));
+  for (const side of [1, -1]) {
+    const hasSide = (i) => rail[i] === side || rail[i] === 2;
+    // find a starting index that is not inside a run (if the whole loop is walled, 0 is fine)
+    let start = 0; while (start < N && hasSide(start)) start++;
+    if (start === N) start = 0;
+    let prev = false, base = 0;
+    for (let n = 0; n <= N; n++) {
+      const i = (start + n) % N, on = n < N ? hasSide(i) : (start === 0 && hasSide(0));
+      if (on) {
+        const ox = px[i] + lx[i] * RAIL_OFF * side, oz = pz[i] + lz[i] * RAIL_OFF * side;
+        const v = pos.length / 3;
+        pos.push(ox, py[i] + 0.42, oz, ox, py[i] + 0.6, oz, ox, py[i] + 0.78, oz);
+        // slight W-beam bulge on the middle row, toward the road
+        pos[pos.length - 6] -= lx[i] * 0.05 * side; pos[pos.length - 4] -= lz[i] * 0.05 * side;
+        if (prev && v - base >= 3) idx.push(v - 3, v - 2, v, v - 2, v + 1, v, v - 2, v - 1, v + 1, v - 1, v + 2, v + 1);
+        else base = v;
+        if (n < N && n % 2 === 0) posts.push(ox + lx[i] * 0.08 * side, py[i] + 0.15, oz + lz[i] * 0.08 * side, Math.atan2(track.tx[i], track.tz[i]));
+      }
+      prev = on;
     }
-    prev = s;
   }
   const g = new THREE.Group();
   if (!pos.length) return g;

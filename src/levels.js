@@ -31,6 +31,19 @@ const COAST_POINTS = [
   [210, 16.0, -700], [60, 11.0, -775], [-105, 7.5, -770], [-245, 5.0, -690],
 ];
 
+// Tokyo metropolitan loop: a neon-drenched Shibuya/Shinjuku skyscraper canyon straight, elevated Shuto sweepers past an
+// illuminated red-and-white lattice tower, a high twin-pylon suspension bridge over Tokyo Bay to Odaiba's giant Ferris
+// wheel, a bayshore marine viaduct, and a fast Ginza chicane back onto the main avenue.
+const TOKYO_BAY = { x: 325, z: 65, a: 325, b: 700, level: 0, depth: 15 };
+const TOKYO_POINTS = [
+  [-365, 3.2, -380], [-360, 3.2, -180], [-360, 3.2, 20], [-355, 3.3, 220], [-340, 3.8, 410],   // downtown neon canyon straight (+Z)
+  [-295, 6.8, 590], [-185, 10.5, 720], [-40, 14.0, 730], [70, 18.5, 635],                       // Roppongi / Shiba Park sweepers around Tokyo Tower
+  [175, 24.5, 505], [340, 29.0, 390], [505, 24.5, 275], [645, 14.5, 165],                       // Rainbow Suspension Bridge over Tokyo Bay
+  [735, 5.5, 30], [748, 4.0, -145], [718, 4.2, -320], [620, 8.5, -460],                         // Odaiba waterfront boulevard past the Ferris wheel
+  [485, 13.5, -525], [325, 15.0, -540], [165, 13.5, -520], [25, 7.5, -505],                     // southern bayshore marine viaduct
+  [-115, 4.2, -555], [-255, 3.6, -555], [-345, 3.3, -495],                                      // Ginza chicane back to the main straight
+];
+
 export const LEVELS = [
   {
     id: 'sakura', n: '01', name: 'SAKURA VALLEY CIRCUIT', laps: 2, room: '',
@@ -94,6 +107,37 @@ export const LEVELS = [
       verge: { grass_a: 0.28, grass_b: 0.34, fern: 0.1, nanohana: 0.06, shrub: 0.14, azalea: 0.08 },
     },
   },
+  {
+    id: 'tokyo', n: '04', name: 'TOKYO SHUTO EXPRESSWAY', laps: 2, room: 'T', night: true,
+    blurb: 'Neon skyscraper canyons, Tokyo Tower sweepers, Rainbow Bridge and Odaiba waterfront.',
+    track: { points: TOKYO_POINTS, startNear: [-360, 3.2, -160], viaductY: 5.0 },
+    music: ['tokyo1', 'tokyo2'],
+    sky: {
+      night: true, city: true, el: 26, az: -42,
+      sunColor: [0.62, 0.76, 1.0], sunIntensity: 3.1,
+      hemi: 1.25, hemiSky: 0x5c7cfa, hemiGround: 0x2c2238, env: 1.35,
+      zenith: [0.012, 0.022, 0.068], horizon: [0.09, 0.07, 0.18], glow: [0.32, 0.14, 0.28],
+      cloudShade: [0.04, 0.045, 0.095], cloudLit: [0.22, 0.14, 0.28],
+      fog: [0.055, 0.062, 0.125], fogDensity: 0.00032,
+    },
+    terrain: { farms: false, urban: true, mountainFrom: 920, mountainTo: 1480, roadDip: 0 },
+    lakes: [TOKYO_BAY],
+    city: {
+      tower: { x: -230, z: 825 },
+      bridge: { auto: true },
+      ferris: { x: 825, z: -225, ry: -0.35 },
+      gantries: [
+        [0.08, 'C1', '芝公園 · 六本木', 'SHIBA PARK / ROPPONGI'],
+        [0.24, 'B', 'レインボーブリッジ', 'RAINBOW BRIDGE / ODAIBA'],
+        [0.50, 'B', 'お台場海浜公園', 'ODAIBA WATERFRONT'],
+        [0.83, 'C1', '銀座 · 渋谷方面', 'GINZA / SHIBUYA'],
+      ],
+    },
+    flora: {
+      forestFrom: 1350, forest: 0, nearForest: 0, sakura: 0.55, petals: 0.14, rocks: 0, tufts: 0, vergeDensity: 0.12,
+      verge: { grass_a: 0, grass_b: 0, fern: 0, nanohana: 0, shrub: 0.65, azalea: 0.35 },
+    },
+  },
 ];
 
 const get = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
@@ -126,16 +170,16 @@ const CSS = `
   background: rgba(6,7,12,.6); backdrop-filter: blur(8px); pointer-events: auto; font-style: italic; }
 #course h2 { margin: 0; font-size: 7vh; font-weight: 900; line-height: 1; }
 #course h2 em { color: var(--pink); font-style: inherit; }
-#course .cards { display: flex; gap: 2.2vw; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
-#course .card { font: inherit; color: #fff; text-align: left; cursor: pointer; width: min(41vh, 29vw); padding: 0 0 1.8vh; background: rgba(11,12,16,.9);
+#course .cards { display: flex; gap: 1.4vw; flex-wrap: wrap; justify-content: center; max-width: 96vw; }
+#course .card { font: inherit; color: #fff; text-align: left; cursor: pointer; width: min(37vh, 22.2vw); padding: 0 0 1.6vh; background: rgba(11,12,16,.9);
   border: .5vh solid transparent; box-shadow: 0 1.5vh 4vh rgba(0,0,0,.5); transition: transform .12s, border-color .12s; }
 #course .card[aria-pressed="true"] { border-color: var(--pink); transform: translateY(-1vh); }
 #course canvas { display: block; width: 100%; aspect-ratio: 16 / 10; background: #10141b; }
-#course .n { display: inline-block; margin: 1.6vh 0 0 1.8vh; background: var(--pink); padding: .2vh 1.2vh; font-size: 1.9vh; font-weight: 800; letter-spacing: .2em; }
-#course .cur { margin-left: 1vh; font-size: 1.5vh; letter-spacing: .18em; color: var(--yellow); font-weight: 700; }
-#course .name { margin: .8vh 1.8vh 0; font-size: 3.4vh; font-weight: 900; line-height: 1.05; }
-#course .stat { margin: .6vh 1.8vh 0; font-size: 1.9vh; letter-spacing: .16em; font-weight: 700; color: var(--yellow); }
-#course .blurb { margin: .8vh 1.8vh 0; font-size: 1.75vh; font-style: normal; opacity: .8; line-height: 1.35; min-height: 4.8vh; }
+#course .n { display: inline-block; margin: 1.4vh 0 0 1.6vh; background: var(--pink); padding: .2vh 1.1vh; font-size: 1.75vh; font-weight: 800; letter-spacing: .2em; }
+#course .cur { margin-left: .8vh; font-size: 1.4vh; letter-spacing: .16em; color: var(--yellow); font-weight: 700; }
+#course .name { margin: .7vh 1.6vh 0; font-size: 2.7vh; font-weight: 900; line-height: 1.05; }
+#course .stat { margin: .5vh 1.6vh 0; font-size: 1.75vh; letter-spacing: .15em; font-weight: 700; color: var(--yellow); }
+#course .blurb { margin: .7vh 1.6vh 0; font-size: 1.6vh; font-style: normal; opacity: .8; line-height: 1.35; min-height: 4.6vh; }
 #course .hint { font-size: 1.9vh; letter-spacing: .2em; font-weight: 700; opacity: .85; font-style: normal; }
 `;
 
@@ -165,8 +209,13 @@ export function initCourseSelect(cfg) {
     if (level.sea) grow(level.sea.shoreX - 280, 0);
     const sc2 = Math.min((W - 50) / (x1 - x0), (H - 50) / (z1 - z0));
     const px = (x) => W / 2 + (x - (x0 + x1) / 2) * sc2, pz = (z) => H / 2 + (z - (z0 + z1) / 2) * sc2;
-    g.fillStyle = '#17212a'; g.fillRect(0, 0, W, H);
-    g.fillStyle = '#2f7f9c';
+    g.fillStyle = level.city ? '#0d1020' : '#17212a'; g.fillRect(0, 0, W, H);
+    if (level.city) {
+      g.strokeStyle = 'rgba(92,124,250,.14)'; g.lineWidth = 1;
+      for (let gx = 0; gx < W; gx += 22) { g.beginPath(); g.moveTo(gx, 0); g.lineTo(gx, H); g.stroke(); }
+      for (let gy = 0; gy < H; gy += 22) { g.beginPath(); g.moveTo(0, gy); g.lineTo(W, gy); g.stroke(); }
+    }
+    g.fillStyle = level.city ? '#154e72' : '#2f7f9c';
     if (level.sea) {
       const shAt = (z) => { let s = level.sea.shoreX; for (const [a, f, p] of (level.sea.waves || [])) s += a * Math.sin(z * f + p); return s; };
       g.beginPath(); g.moveTo(0, 0);
@@ -177,9 +226,11 @@ export function initCourseSelect(cfg) {
       g.lineTo(0, H); g.closePath(); g.fill();
     }
     for (const L of level.lakes) { g.beginPath(); g.ellipse(px(L.x), pz(L.z), L.a * sc2, L.b * sc2, 0, 0, Math.PI * 2); g.fill(); }
+    if (level.city?.tower) { g.fillStyle = '#ff4538'; g.beginPath(); g.arc(px(level.city.tower.x), pz(level.city.tower.z), 4.5, 0, Math.PI * 2); g.fill(); }
+    if (level.city?.ferris) { g.fillStyle = '#ff3b9a'; g.beginPath(); g.arc(px(level.city.ferris.x), pz(level.city.ferris.z), 4.5, 0, Math.PI * 2); g.fill(); }
     const path = () => { g.beginPath(); for (let i = 0; i <= t.N; i += 3) g.lineTo(px(t.px[i % t.N]), pz(t.pz[i % t.N])); g.closePath(); };
     g.lineJoin = 'round';
-    path(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 11; g.stroke();
+    path(); g.strokeStyle = level.city ? 'rgba(255,42,127,.45)' : 'rgba(0,0,0,.6)'; g.lineWidth = 11; g.stroke();
     path(); g.strokeStyle = '#fff'; g.lineWidth = 5; g.stroke();
     g.fillStyle = '#ffe14a'; g.beginPath(); g.arc(px(t.px[0]), pz(t.pz[0]), 7, 0, Math.PI * 2); g.fill();
     return t.length;

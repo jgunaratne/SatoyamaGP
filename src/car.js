@@ -141,8 +141,17 @@ function getShared() {
   const gg = gc.getContext('2d'), ggr = gg.createRadialGradient(64, 32, 2, 64, 32, 62);
   ggr.addColorStop(0, 'rgba(255,255,255,1)'); ggr.addColorStop(0.35, 'rgba(255,255,255,.45)'); ggr.addColorStop(1, 'rgba(255,255,255,0)');
   gg.fillStyle = ggr; gg.save(); gg.translate(0, 16); gg.scale(1, 0.5); gg.fillRect(0, 0, 128, 64); gg.restore();
+  const bc = document.createElement('canvas'); bc.width = 128; bc.height = 256;
+  const bg = bc.getContext('2d');
+  for (const cx of [38, 90]) {
+    const gr = bg.createRadialGradient(cx, 240, 4, cx, 110, 130);
+    gr.addColorStop(0, 'rgba(255,244,218,.42)'); gr.addColorStop(0.45, 'rgba(225,238,255,.14)'); gr.addColorStop(1, 'rgba(200,225,255,0)');
+    bg.fillStyle = gr; bg.fillRect(0, 0, 128, 256);
+  }
   shared = {
     glow: new THREE.CanvasTexture(gc),
+    beam: new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(bc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }),
+    headFlare: new THREE.MeshBasicMaterial({ map: null, color: 0xfff3dc, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 }),
     body: buildBodyGeometry(), wheel: buildWheelGeometry(),
     glass: new THREE.MeshPhysicalMaterial({ color: 0x06090c, roughness: 0.04, metalness: 0.0, clearcoat: 1, envMapIntensity: 1.6 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6, metalness: 0.2 }),
@@ -155,11 +164,23 @@ function getShared() {
     head: new THREE.MeshStandardMaterial({ color: 0x8899aa, emissive: 0xdfeaff, emissiveIntensity: 5, roughness: 0.2 }),
     blob: new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
   };
+  shared.headFlare.map = shared.glow;
   return shared;
 }
 
+function attachNightLights(group, body, W, H, S) {
+  for (const sx of [1, -1]) {
+    const fg = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.34), S.headFlare);
+    fg.position.set(sx * W * 0.31, H * 0.44, HALF_LEN + 0.04);
+    body.add(fg);
+  }
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 13.5), S.beam);
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.05, HALF_LEN + 6.6); pool.renderOrder = 3;
+  group.add(pool);
+}
+
 // Car built around a TRELLIS.2 scanned-style body (wheels are part of the mesh), scaled to the physics wheelbase.
-function buildModelCar(model, S) {
+function buildModelCar(model, S, night = false) {
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
   const s = (HALF_LEN * 2) / model.size.z, W = model.size.x * s, H = model.size.y * s;
@@ -202,7 +223,8 @@ function buildModelCar(model, S) {
     g.position.set(sx * W * 0.31, H * 0.58, -HALF_LEN - 0.03); g.rotation.y = Math.PI;
     body.add(g);
   }
-  Object.defineProperty(tail, 'emissiveIntensity', { set(v) { tail.opacity = v > 5 ? 0.8 : 0.0; }, get() { return 0; } });
+  Object.defineProperty(tail, 'emissiveIntensity', { set(v) { tail.opacity = v > 5 ? 0.9 : (night ? 0.45 : 0.0); }, get() { return 0; } });
+  if (night) attachNightLights(group, body, W, H, S);
   // no separable wheels in this model (or a reduced level): keep inert pivots so the vehicle code has something to drive
   if (!wheels.length) for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
     const pivot = new THREE.Group(); pivot.position.set(sx * WHEEL_X, WHEEL_R, sz * WHEEL_Z);
@@ -215,9 +237,9 @@ function buildModelCar(model, S) {
   return { group, body, wheels, tail, paint: model.levels[0].mat };
 }
 
-export function buildCar(color, model = null) {
+export function buildCar(color, model = null, night = false) {
   const S = getShared();
-  if (model) return buildModelCar(model, S);
+  if (model) return buildModelCar(model, S, night);
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body);
   const paint = new THREE.MeshPhysicalMaterial({ color, roughness: 0.34, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.25 });
@@ -261,5 +283,6 @@ export function buildCar(color, model = null) {
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.35, 5.0), S.blob);
   blob.rotation.x = -Math.PI / 2; blob.position.y = 0.035; blob.renderOrder = 2;
   group.add(blob);
+  if (night) attachNightLights(group, body, 1.9, 1.25, S);
   return { group, body, wheels, tail, paint };
 }

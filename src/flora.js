@@ -111,7 +111,7 @@ function tuftGeometry() {
 export function buildFlora(scene, track, terrain, colliders, props, q, models = null, level = {}) {
   const yardTrees = props.yardTrees, M = (...ids) => (models ? models.all(...ids) : null);
   // per-course planting (levels.js); the defaults are Sakura Valley
-  const F = { forestFrom: 172, forest: 20000, forestLod: 750, nearForest: 0, sakura: 1, petals: 1, verge: null, rocks: 1, ...(level.flora || {}) };
+  const F = { forestFrom: 172, forest: 20000, forestLod: 750, nearForest: 0, sakura: 1, petals: 1, verge: null, vergeDensity: 1, tufts: 1, rocks: 1, ...(level.flora || {}) };
   const group = new THREE.Group();
   scene.add(group);
   const N = track.N;
@@ -175,15 +175,16 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
     const pinks = [[1, 1, 1], [1.08, 0.93, 0.97], [1.1, 1.08, 1.06], [0.98, 0.82, 0.9]];
     let side = 1;
     for (let i = 4; i < N; i += 7) {
-      const inAvenue = fbm(i * 0.011, 2.5, 3) > 0.43 + (1 - F.sakura) * 0.4 || i < 170 || i > N - 110;
+      const inAvenue = fbm(i * 0.011, 2.5, 3) > 0.43 + (1 - F.sakura) * 0.4 || (!level.city && (i < 170 || i > N - 110));
       if (!inAvenue) continue;
       for (const sd of [side, -side]) {
         if (sd !== side && rng() < 0.45) continue;
-        const off = sd * (ROAD_HALF + 7 + rng() * 3.2);
+        const off = sd * (ROAD_HALF + (level.city ? 3.8 + rng() * 0.9 : 7 + rng() * 3.2));
         const x = track.px[i] + track.lx[i] * off, z = track.pz[i] + track.lz[i] * off;
-        const s = 0.95 + rng() * 0.5;
-        if (terrain.lakeAt(x, z, 1.1)) continue;
-        items.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s, c: pinks[Math.floor(rng() * pinks.length)] });
+        const s = (level.city ? 0.82 : 0.95) + rng() * (level.city ? 0.32 : 0.5);
+        if (terrain.lakeAt(x, z, 1.1) || (level.city && track.py[i] - terrain.heightAt(x, z) > 2.2)) continue;
+        const col = level.city && rng() < 0.48 ? [0.22 + rng() * 0.1, 0.62, 0.24] : pinks[Math.floor(rng() * pinks.length)];
+        items.push({ x, y: terrain.heightAt(x, z) - 0.1, z, ry: rng() * 6.28, s, c: col });
         colliders.add(x, z, 0.5);
       }
       side = -side;
@@ -240,7 +241,7 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
       ['grass_a', 0.36, 0.95, 0.4, 0.13], ['grass_b', 0.14, 1.75, 0.5, 0.1], ['fern', 0.2, 0.6, 0.3, 0.06],
       ['nanohana', 0.14, 1.05, 0.3, 0.09], ['shrub', 0.1, 1.5, 0.5, 0], ['azalea', 0.06, 1.1, 0.3, 0],
     ].map(([id, share, h, hv, sway]) => ({ m: M(id), share: F.verge ? F.verge[id] || 0 : share, h, hv, sway, list: [] })).filter((k) => k.m && k.share > 0);
-    const total = kinds.reduce((a, k) => a + k.share, 0), want = Math.round(9000 * q.density);
+    const total = kinds.reduce((a, k) => a + k.share, 0), want = Math.round(9000 * q.density * F.vergeDensity);
     for (let n = 0; n < want && kinds.length; n++) {
       let r = rng() * total, k = kinds[0];
       for (const kk of kinds) { if (r < kk.share) { k = kk; break; } r -= kk.share; }
@@ -248,14 +249,15 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
       const i = Math.floor(rng() * N), sd = rng() < 0.5 ? 1 : -1;
       const lat = ROAD_HALF + (big ? 5.2 : 1.9) + Math.pow(rng(), 1.3) * (big ? 9 : 10.5), al = (rng() - 0.5) * 2;
       const x = track.px[i] + track.lx[i] * lat * sd + track.tx[i] * al, z = track.pz[i] + track.lz[i] * lat * sd + track.tz[i] * al;
-      const sh = lat < ROAD_HALF + SHOULDER_W ? track.py[i] - SHOULDER_DROP * (lat - ROAD_HALF) / SHOULDER_W : -1e9;
+      if (terrain.lakeAt(x, z, 1.08) || track.py[i] - terrain.heightAt(x, z) > 2.2) continue;
+      const sh = !level.city && lat < ROAD_HALF + SHOULDER_W ? track.py[i] - SHOULDER_DROP * (lat - ROAD_HALF) / SHOULDER_W : -1e9;
       const s = (k.h * (1 + (rng() - 0.5) * 2 * k.hv)) / k.m[0].size.y, t = 0.85 + rng() * 0.3;
       k.list.push({ x, y: Math.max(sh, terrain.heightAt(x, z)) - 0.04 * k.h, z, ry: rng() * 6.28, s, c: [t, t * (0.95 + rng() * 0.1), t * 0.95] });
     }
     for (const k of kinds) group.add(scatter(k.m[0], k.list, { cell: 24, dist: [65, 200], far: 650, cast: 1, sway: k.sway }));
 
     const rocks = M('boulder_a', 'boulder_b');
-    if (rocks) {
+    if (rocks && F.rocks > 0) {
       const lists = rocks.map(() => []);
       for (let i = 30; i < N - 20; i += Math.round((23 + Math.floor(rng() * 30)) / F.rocks)) {
         const sd = rng() < 0.5 ? 1 : -1, lat = sd * (ROAD_HALF + 6.5 + rng() * 9), v = Math.floor(rng() * rocks.length);
@@ -268,8 +270,8 @@ export function buildFlora(scene, track, terrain, colliders, props, q, models = 
   }
 
   // ----- roadside grass tufts swaying in the wind -----
-  {
-    const items = [], want = Math.round(65000 * q.density * (q.lowq ? 0.5 : 1));
+  if (F.tufts > 0) {
+    const items = [], want = Math.round(65000 * F.tufts * q.density * (q.lowq ? 0.5 : 1));
     for (let n = 0; n < want; n++) {
       const i = Math.floor(rng() * N), sd = rng() < 0.5 ? 1 : -1;
       const lat = ROAD_HALF + 1.5 + Math.pow(rng(), 1.4) * 9.5;
