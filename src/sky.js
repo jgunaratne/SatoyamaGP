@@ -1,32 +1,50 @@
 import * as THREE from 'three';
 import { NOISE_TEX_GLSL, gNoise, gTime, fbm } from './util.js';
 
-const EL = (23 * Math.PI) / 180, AZ = (32 * Math.PI) / 180;
-export const SUN_DIR = new THREE.Vector3(Math.cos(EL) * Math.sin(AZ), Math.sin(EL), Math.cos(EL) * Math.cos(AZ)).normalize();
-// Aim the low sun ahead-left of the start straight so the grid is back-lit.
-export function orientSun(heading) {
-  const az = heading + AZ;
-  SUN_DIR.set(Math.cos(EL) * Math.sin(az), Math.sin(EL), Math.cos(EL) * Math.cos(az)).normalize();
+// Time of day. Each course can override any of these (levels.js `sky`); the defaults are Sakura Valley's
+// mid-afternoon. el/az are the sun's elevation and its bearing from the start straight, in degrees.
+const SKY = {
+  el: 23, az: 32, sunColor: [1, 0.81, 0.6], sunIntensity: 7.5, hemi: 0.35, env: 0.85,
+  zenith: [0.085, 0.2, 0.5], horizon: [0.5, 0.5, 0.58], glow: [1.5, 0.82, 0.4],
+  cloudShade: [0.36, 0.31, 0.4], cloudLit: [1.55, 1.12, 0.78], fog: [0.6, 0.52, 0.5], fogDensity: 0.00042,
+};
+const rad = (d) => (d * Math.PI) / 180;
+export const SUN_DIR = new THREE.Vector3();
+export const FOG_COLOR = new THREE.Color();
+export function setSky(cfg = {}) {
+  Object.assign(SKY, cfg);
+  FOG_COLOR.setRGB(...SKY.fog);
+  orientSun(0);
 }
-export const FOG_COLOR = new THREE.Color().setRGB(0.6, 0.52, 0.5);
+// Aim the low sun ahead and to one side of the start straight so the grid is back-lit.
+export function orientSun(heading) {
+  const az = heading + rad(SKY.az), el = rad(SKY.el);
+  SUN_DIR.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+}
+setSky();
 
 function skyMaterial(lowq) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { uSun: { value: SUN_DIR }, uTime: gTime, uNoise: gNoise },
+    uniforms: {
+      uSun: { value: SUN_DIR }, uTime: gTime, uNoise: gNoise,
+      uZen: { value: new THREE.Vector3(...SKY.zenith) }, uHor: { value: new THREE.Vector3(...SKY.horizon) }, uGlow: { value: new THREE.Vector3(...SKY.glow) },
+      uCloudS: { value: new THREE.Vector3(...SKY.cloudShade) }, uCloudL: { value: new THREE.Vector3(...SKY.cloudLit) }, uFog: { value: new THREE.Vector3(...SKY.fog) },
+    },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
     fragmentShader: /* glsl */ `
       varying vec3 vDir; uniform vec3 uSun; uniform float uTime;
+      uniform vec3 uZen, uHor, uGlow, uCloudS, uCloudL, uFog;
       ${NOISE_TEX_GLSL}
       void main(){
         vec3 d = normalize(vDir);
         float h = max(d.y, 0.);
         float sd = max(dot(d, uSun), 0.);
         float sunAmt = pow(sd, 5.);
-        vec3 zen = vec3(.085, .2, .5);
-        vec3 hor = mix(vec3(.5, .5, .58), vec3(1.5, .82, .4), sunAmt * .85 + .15 * sd);
+        vec3 zen = uZen;
+        vec3 hor = mix(uHor, uGlow, sunAmt * .85 + .15 * sd);
         vec3 col = mix(hor, zen, pow(h, .42));
         col += vec3(1., .55, .25) * pow(sd, 48.) * .9;
         col += vec3(1., .8, .55) * pow(sd, 700.) * 4.;
@@ -38,11 +56,11 @@ function skyMaterial(lowq) {
           float c2 = .64 * tf(p * .6 + uSun.xz * .16) + .36 * tf2(pb + uSun.zx * .3);
           float dens = smoothstep(.47, .66, c + .05 * tn(p * 40.));
           float lit = clamp((c - c2) * 5. + .55, 0., 1.);
-          vec3 cc = mix(vec3(.36, .31, .4), vec3(1.55, 1.12, .78), lit);
+          vec3 cc = mix(uCloudS, uCloudL, lit);
           cc += vec3(1.2, .6, .25) * sunAmt * (1. - dens * .6);
           col = mix(col, cc, dens * .9 * smoothstep(.005, .16, d.y));
         }
-        col = mix(col, vec3(.6, .52, .5), smoothstep(.0, -.08, d.y));
+        col = mix(col, uFog, smoothstep(.0, -.08, d.y));
         gl_FragColor = vec4(col, 1.);
       }`,
   });
@@ -59,18 +77,18 @@ export function buildSky(scene, renderer, lowq, start) {
   envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), mat));
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(envScene, 0, 1, 200).texture;
-  scene.environmentIntensity = 0.85;
+  scene.environmentIntensity = SKY.env;
   pmrem.dispose();
 
-  scene.fog = new THREE.FogExp2(FOG_COLOR, 0.00042);
+  scene.fog = new THREE.FogExp2(FOG_COLOR, SKY.fogDensity);
 
-  const sun = new THREE.DirectionalLight(0xffcf9a, 7.5);
+  const sun = new THREE.DirectionalLight(new THREE.Color().setRGB(...SKY.sunColor, THREE.SRGBColorSpace), SKY.sunIntensity);
   sun.castShadow = true;
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.35;
   const sc = sun.shadow.camera;
   sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 1; sc.far = 800;
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0x9fb6ff, 0x4a3d2c, 0.35));
+  scene.add(new THREE.HemisphereLight(0x9fb6ff, 0x4a3d2c, SKY.hemi));
 
   scene.add(buildBackdrop(start));
   return { sky, sun };
