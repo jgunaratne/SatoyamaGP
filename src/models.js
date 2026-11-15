@@ -10,6 +10,34 @@ const BASE = import.meta.env.BASE_URL + 'models/';
 // Yaw (radians) that turns each raw model so its front faces +Z. TRELLIS orients meshes from the concept view.
 const YAW = { car_yellow: Math.PI, farmhouse_b: Math.PI / 2, torii: Math.PI / 2 };
 
+// City assets are generated from night-time concepts, so their base colour already holds the lit windows, signs and
+// screens. nightGlow() turns the bright parts of that colour into emissive light (and leaves walls dark), for textured
+// meshes and vertex-coloured LODs alike. [lo, hi] is the linear-luminance ramp, gain the brightness.
+// Pale-walled buildings need a higher threshold so only their windows light up, not the tiles.
+const GLOW = {
+  city_lattice_tower: [0.12, 0.7, 0.8], city_taxi: [0.55, 0.9, 2], city_apartment: [0.4, 0.8, 1.8], city_office_a: [0.5, 0.9, 1.7],
+  city_konbini: [0.45, 0.9, 1.6], city_vending: [0.45, 0.9, 1.5], default: [0.25, 0.65, 1.8],
+};
+// Unlit wall brightness at night (the concepts are exposed for the camera, far brighter than moonlight on concrete).
+const NIGHT_ALBEDO = { city_apartment: 0.4, city_office_a: 0.42, city_konbini: 0.5, city_lattice_tower: 0.8, default: 0.6 };
+export function nightGlow(mat, lo = GLOW.default[0], hi = GLOW.default[1], gain = GLOW.default[2]) {
+  const vc = !mat.map, prev = mat.onBeforeCompile, ramp = `smoothstep(${lo.toFixed(3)}, ${hi.toFixed(3)}, eL) * ${gain.toFixed(3)}`;
+  if (!vc) mat.emissiveMap = mat.map;
+  mat.emissive = new THREE.Color(0xffffff); mat.emissiveIntensity = 1;
+  mat.onBeforeCompile = (sh, r) => {
+    if (prev) prev(sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', vc ? `
+      #ifdef USE_COLOR
+        { float eL = dot(vColor.rgb, vec3(.299, .587, .114)); totalEmissiveRadiance = vColor.rgb * ${ramp}; }
+      #endif` : `
+      #ifdef USE_EMISSIVEMAP
+        { vec3 eC = texture2D(emissiveMap, vEmissiveMapUv).rgb; float eL = dot(eC, vec3(.299, .587, .114)); totalEmissiveRadiance = eC * ${ramp}; }
+      #endif`);
+  };
+  mat.customProgramCacheKey = () => `glow_${vc ? 1 : 0}_${lo}_${hi}_${gain}`;
+  return mat;
+}
+
 // Car bodies carry roughness/metalness per vertex (TEXCOORD_1), smoothed along the surface at build time.
 // Interpolating it on the GPU avoids the blotches a filtered texture gets from the fragmented TRELLIS UV atlas.
 function vertexGloss(geo, mat) {
@@ -69,7 +97,7 @@ export class Models {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const jobs = [];
     for (const [id, info] of Object.entries(this.index)) {
-      if (only && !only.includes(id)) continue;
+      if (only && !(typeof only === 'function' ? only(id, info) : only.includes(id))) continue;
       const first = Math.min(lodStart, info.lods - 1);
       for (let n = first; n < info.lods; n++) jobs.push({ id, n, first });
     }
@@ -123,6 +151,7 @@ export class Models {
         else if (!m.map) { m.metalness = 0.35; m.roughness = 0.4; }
         else if (l.geo.attributes.uv1) l.parts = splitWheels(l.geo, vertexGloss(l.geo, m));
         if (!m.map && foliage) smoothCrownNormals(l.geo, size0);
+        if (id.startsWith('city_')) { m.roughness = 0.62; m.color.multiplyScalar(NIGHT_ALBEDO[id] || NIGHT_ALBEDO.default); nightGlow(m, ...(GLOW[id] || GLOW.default)); }
         m.transparent = false; m.depthWrite = true; m.side = m.map ? THREE.FrontSide : THREE.DoubleSide;
       });
       this.map.set(id, { id, kind, levels, size: size0 });

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { NOISE_TEX_GLSL, gNoise, clamp, lerp, smoothstep, fbm, ridged, hashInt } from './util.js';
 import { ROAD_HALF } from './track.js';
+import { loadTexture } from './textures.js';
 
 export const TSIZE = 3072, TN = 384, TCELL = 8;
 export const CX = 5, CZ = 4;            // one farm plot = 5 x 4 terrain cells (40 x 32 m)
@@ -85,10 +86,13 @@ export class Terrain {
         const rid = ridged(x * 0.0016, z * 0.0016, 5);
         const big = fbm(x * 0.0007 + 5, z * 0.0007 + 9, 3);
         // On urban courses, keep the metropolitan basin flat near sea level rather than ramping terrain up to elevated viaducts.
-        const baseY = opt.urban ? 2.85 : lerp(track.heightAt(x, z, idx), sy / sw, smoothstep(16, 45, d));
+        // Streets at ground level get a pavement apron at road height; under viaducts the ground stays down at city level.
+        const roadH = track.heightAt(x, z, idx);
+        const baseY = opt.urban ? lerp(lerp(roadH - 0.12, 2.85, smoothstep(4.2, 5.8, roadH)), 2.85, smoothstep(22, 48, d))
+          : lerp(roadH, sy / sw, smoothstep(16, 45, d));
         const mScale = opt.urban ? 0 : 1;
         const h = baseY - (opt.urban ? 0 : 0.35 + opt.roadDip * (1 - smoothstep(4, 8, d)))
-          + smoothstep(16, 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * (opt.urban ? 0.9 : 5)
+          + smoothstep(opt.urban ? 40 : 16, opt.urban ? 110 : 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * (opt.urban ? 0.9 : 5)
           + mScale * m * (40 + 340 * (0.55 * rid + 0.45 * fbm(x * 0.003 + 2, z * 0.003 - 4, 4)) * (0.5 + big))
           + mScale * smoothstep(950, 1520, r) * 230 * (0.5 + rid) * dry * smoothstep(28, 140, d);
         let hOut = lerp(h, bowl, wet);
@@ -170,6 +174,7 @@ export class Terrain {
     const ncx = this.ncx, ncz = this.ncz;
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uCells = { value: tex };
+      if (this.urban) sh.uniforms.uPave = { value: loadTexture('city/pavement.webp') };
       sh.uniforms.uNoise = gNoise;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float aRoad;\nvarying float vRoad;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
@@ -177,6 +182,7 @@ export class Terrain {
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
           uniform sampler2D uCells;
+          ${this.urban ? 'uniform sampler2D uPave;' : ''}
           varying float vRoad; varying vec3 vWPos; varying vec3 vWNrm;
           float gRough;
           ${NOISE_TEX_GLSL}`)
@@ -252,7 +258,10 @@ export class Terrain {
           {
             float gx = abs(fract(wp.x / 64.) - .5) * 64., gz = abs(fract(wp.z / 64.) - .5) * 64.;
             float street = 1. - smoothstep(3.8, 4.6, min(gx, gz));
-            vec3 pave = mix(vec3(.048, .052, .064), vec3(.082, .088, .105), n2) * (.88 + .24 * n3);
+            // gemini-image paving-slab texture for sidewalks and plazas, fading to its average tone in the distance
+            vec3 slab = texture2D(uPave, wp.xz / 5.2).rgb;
+            slab = mix(vec3(.2), slab, exp(-vd * .006));
+            vec3 pave = slab * mix(.3, .46, n1) * (.9 + .2 * n3);
             vec3 streetCol = vec3(.026, .029, .036) * (.85 + .3 * n3);
             float park = smoothstep(.62, .76, n1) * (1. - street) * smoothstep(20., 45., vRoad);
             vec3 parkLawn = mix(vec3(.022, .055, .028), vec3(.045, .095, .042), n2);

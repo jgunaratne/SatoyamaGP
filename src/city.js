@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, gTime } from './util.js';
 import { ROAD_HALF } from './track.js';
+import { scatter, nightGlow } from './models.js';
+import { loadTexture } from './textures.js';
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function box(w, h, d, x = 0, y = 0, z = 0) { const g = new THREE.BoxGeometry(w, h, d); if (x || y || z) g.translate(x, y, z); return g; }
@@ -14,50 +16,15 @@ function makeTex(c, srgb = true, clampEdge = false) {
   return t;
 }
 
-// High-rise glass curtain-wall & mid-rise commercial facade atlas with lit office/apartment window grids.
-function buildingFacadeTextures(rng) {
-  const W = 512, H = 1024, c = canvas(W, H), g = c.getContext('2d'), e = canvas(W, H), ge = e.getContext('2d');
-  g.fillStyle = '#121722'; g.fillRect(0, 0, W, H);
-  ge.fillStyle = '#000000'; ge.fillRect(0, 0, W, H);
-
-  const cols = 16, rows = 48, cw = W / cols, rh = H / rows;
-  const tones = ['#ffdca8', '#ffe9c4', '#cce6ff', '#e4f1ff', '#9ad4ff', '#ffcf86'];
-  for (let r = 0; r < rows; r++) {
-    // Structural spandrel band between floors
-    g.fillStyle = r % 6 === 0 ? '#0b0e15' : '#161c28';
-    g.fillRect(0, r * rh, W, 5);
-    const floorLit = rng() < 0.72 ? 0.35 + rng() * 0.45 : 0.1;
-    const bandHue = tones[Math.floor(rng() * tones.length)];
-    for (let k = 0; k < cols; k++) {
-      const px = k * cw + 3, py = r * rh + 5, pw = cw - 6, ph = rh - 7;
-      // Ground-floor glowing konbini / arcade / shopfronts at bottom rows
-      if (r >= rows - 2) {
-        const shopCol = (k >> 2) % 3 === 0 ? '#6ee7ff' : (k >> 2) % 3 === 1 ? '#ffe09e' : '#ff7ab8';
-        g.fillStyle = '#242c3c'; g.fillRect(px, py, pw, ph);
-        ge.fillStyle = shopCol; ge.fillRect(px, py + 2, pw, ph - 3);
-        continue;
-      }
-      g.fillStyle = rng() < 0.5 ? '#1b2434' : '#151d2b';
-      g.fillRect(px, py, pw, ph);
-      if (rng() < floorLit) {
-        const col = rng() < 0.65 ? bandHue : tones[Math.floor(rng() * tones.length)];
-        const br = 0.45 + rng() * 0.55;
-        ge.globalAlpha = br;
-        ge.fillStyle = col;
-        ge.fillRect(px + 1, py + 1, pw - 2, ph - 2);
-        // Subtle interior blinds / desk silhouette
-        if (rng() < 0.4) {
-          ge.fillStyle = '#000';
-          ge.fillRect(px + 1, py + ph * 0.55, pw - 2, ph * 0.4);
-        }
-        ge.globalAlpha = 1;
-      }
-    }
+// Box whose four walls repeat a facade map at real-world scale (one tile = tw x th metres); the roof samples one texel.
+function facadeBox(w, h, d, tw, th, uo = 0, vo = 0) {
+  const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    const f = i >> 2;   // BoxGeometry: 4 vertices per face, in the order +x, -x, +y, -y, +z, -z
+    if (f === 2 || f === 3) uv.setXY(i, uo, vo);
+    else uv.setXY(i, uo + uv.getX(i) * (f < 2 ? d : w) / tw, vo + uv.getY(i) * h / th);
   }
-  // Vertical mullions
-  g.fillStyle = '#0a0d14';
-  for (let k = 0; k <= cols; k++) g.fillRect(k * cw - 1.5, 0, 3, H);
-  return { map: makeTex(c), emissive: makeTex(e) };
+  return g;
 }
 
 // Vertical & rooftop Japanese neon sign atlas (4 columns x 2 rows of signs).
@@ -339,7 +306,7 @@ function buildFerrisWheel(x, baseY, z, ry = 0) {
   return group;
 }
 
-export function buildCity(scene, track, terrain, colliders, level, q = {}) {
+export function buildCity(scene, track, terrain, colliders, level, q = {}, models = null) {
   const group = new THREE.Group();
   if (!level.city) return group;
   scene.add(group);
@@ -430,6 +397,28 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}) {
     });
     pm.computeBoundingSphere(); bm.computeBoundingSphere();
     group.add(pm, bm);
+
+    // Warm pool of light on the asphalt under every lamp (an additive decal laid along the road's slope).
+    const pc = canvas(64, 64), pg2 = pc.getContext('2d'), gr = pg2.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,.42)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    pg2.fillStyle = gr; pg2.fillRect(0, 0, 64, 64);
+    const poolGeo = new THREE.PlaneGeometry(7, 13); poolGeo.rotateX(-Math.PI / 2);
+    const poolMat = new THREE.MeshBasicMaterial({ map: makeTex(pc, true, true), color: 0xffd9a8, transparent: true, opacity: 0.17, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const pools = new THREE.InstancedMesh(poolGeo, poolMat, list.length);
+    const vl = new THREE.Vector3(), vt = new THREE.Vector3(), vn = new THREE.Vector3(), m4 = new THREE.Matrix4();
+    let k = 0;
+    for (let i = 8; i < track.N - 8; i += 18) {
+      const a = (i + 1) % track.N, b = (i - 1 + track.N) % track.N;
+      vt.set(track.tx[i], (track.py[a] - track.py[b]) / (2 * track.ds), track.tz[i]).normalize();
+      for (const sd of [1, -1]) {
+        vl.set(track.lx[i], 0, track.lz[i]); vn.crossVectors(vt, vl).normalize(); vl.crossVectors(vn, vt);
+        const off = sd * (ROAD_HALF - 2.4);
+        m4.makeBasis(vl, vn, vt).setPosition(track.px[i] + track.lx[i] * off, track.py[i] + 0.035, track.pz[i] + track.lz[i] * off);
+        pools.setMatrixAt(k++, m4);
+      }
+    }
+    pools.renderOrder = 1; pools.computeBoundingSphere();
+    group.add(pools);
   }
 
   // 3. Start/Finish Metropolitan Race Arch (s = 0) + Shuto Expressway overhead green direction sign gantries
@@ -493,22 +482,28 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}) {
     group.add(g);
   }
 
-  // 4. Skyscrapers, mid-rise city blocks, vertical neon signs & rooftop aviation lights
-  const fac1 = buildingFacadeTextures(rng), fac2 = buildingFacadeTextures(rng);
-  const neonTex = neonAtlasTexture();
-  const matGlass = new THREE.MeshStandardMaterial({
-    map: fac1.map, emissiveMap: fac1.emissive, emissive: 0xffffff, emissiveIntensity: 1.85,
-    roughness: 0.24, metalness: 0.55, envMapIntensity: 1.35,
-  });
-  const matMid = new THREE.MeshStandardMaterial({
-    map: fac2.map, emissiveMap: fac2.emissive, emissive: 0xffffff, emissiveIntensity: 1.65,
-    roughness: 0.55, metalness: 0.25,
-  });
-  const neonMat = new THREE.MeshBasicMaterial({ map: neonTex });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x151922, roughness: 0.85 });
-  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2038 });
+  // 4. City blocks. The street walls and the towers behind them are TRELLIS.2 buildings generated from night-time
+  //    concepts (lit windows and signs are in their textures; see nightGlow in models.js). The far skyline clusters,
+  //    and every building when models are off, are boxes skinned with gemini-image facade maps.
+  const M = (id) => (models ? models.get(id) : null);
+  const kinds = (rows) => rows.map(([id, h0, h1, wt]) => ({ id, m: M(id), h0, h1, wt, list: [] })).filter((k) => k.m);
+  const STREET = kinds([
+    ['city_zakkyo_a', 30, 38, 3], ['city_zakkyo_b', 38, 48, 3], ['city_office_a', 46, 60, 2], ['city_dept', 40, 50, 2],
+    ['city_apartment', 48, 60, 2], ['city_konbini', 5.0, 5.6, 1],
+  ]);
+  const TOWERS = kinds([['city_tower_a', 150, 215, 1], ['city_tower_b', 135, 190, 1], ['city_tower_c', 115, 160, 1]]);
+  const useModels = STREET.length >= 3 && TOWERS.length >= 1;
+  const pick = (set, not) => {
+    const pool = set.length > 1 ? set.filter((k) => k !== not) : set;
+    let r = rng() * pool.reduce((a, k) => a + k.wt, 0);
+    for (const k of pool) { if (r < k.wt) return k; r -= k.wt; }
+    return pool[pool.length - 1];
+  };
 
-  const glassGeos = [], midGeos = [], roofGeos = [], neonGeos = [], beaconGeos = [];
+  // facade map -> [material key, tile width, tile height] in metres
+  const TILE = { glass: [43, 40], office: [25, 44], apartment: [24, 30] };
+  const facades = { glass: [], office: [], apartment: [] };
+  const retailGeos = [], roofGeos = [], neonGeos = [], beaconGeos = [], frameGeos = [], screenGeos = [[], [], [], []];
   const placed = []; // [x, z, rad] to prevent overlapping buildings
 
   const okSpot = (x, z, rad, minRoad = ROAD_HALF + 11.5) => {
@@ -523,81 +518,104 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}) {
     return true;
   };
 
-  const addBuilding = (x, z, w, d, h, ry, tall, withNeon, addCol) => {
-    const y0 = terrain.heightAt(x, z) - 0.6;
-    const m4 = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y0, z);
-    const uScale = Math.max(1, Math.round(w / 14)), vScale = Math.max(1, Math.round(h / 38));
-    const body = uvTileBox(w, h, d, 0, 0, uScale, vScale);
-    body.translate(0, h / 2, 0); body.applyMatrix4(m4);
-    (tall ? glassGeos : midGeos).push(body);
-
-    // Rooftop mechanical penthouse + red aviation beacon on tall towers
+  // Procedural block: facade-mapped box, roof slab and plant room, optional shopfront strip on the street side (+Z).
+  const addBox = (x, z, w, d, h, ry, kind, street) => {
+    const y0 = terrain.heightAt(x, z) - 0.6, m4 = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y0, z);
+    const T = TILE[kind], body = facadeBox(w, h, d, T[0], T[1], Math.floor(rng() * 4), Math.floor(rng() * 4));
+    body.translate(0, h / 2, 0); body.applyMatrix4(m4); facades[kind].push(body);
+    const slab = box(w + 0.7, 0.8, d + 0.7, 0, h + 0.4, 0); slab.applyMatrix4(m4); roofGeos.push(slab);
     const pw = w * (0.38 + rng() * 0.22), pd = d * (0.38 + rng() * 0.22), ph = 3 + rng() * 5;
-    const pent = box(pw, ph, pd, 0, h + ph / 2, 0); pent.applyMatrix4(m4);
-    roofGeos.push(pent);
-    if (h > 58) {
-      for (const sx of [-1, 1]) {
-        const b = box(0.95, 0.95, 0.95, sx * (w * 0.44), h + 0.9, d * 0.44);
-        b.applyMatrix4(m4); beaconGeos.push(b);
-      }
+    const pent = box(pw, ph, pd, 0, h + 0.8 + ph / 2, 0); pent.applyMatrix4(m4); roofGeos.push(pent);
+    if (h > 58) for (const sx of [-1, 1]) { const b = box(0.95, 0.95, 0.95, sx * (w * 0.44), h + 1.3, d * 0.44); b.applyMatrix4(m4); beaconGeos.push(b); }
+    if (street) {
+      const shop = new THREE.PlaneGeometry(w, 5.4), uv = shop.attributes.uv, u0 = Math.floor(rng() * 5) * 0.2;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, u0 + uv.getX(i) * (w / 17.6));
+      shop.translate(0, 0.6 + 2.7, d / 2 + 0.07); shop.applyMatrix4(m4); retailGeos.push(shop);
     }
-    // Eye-level vertical street blade signs & facade billboards, plus high rooftop signs
-    if (withNeon) {
-      const si = Math.floor(rng() * 8), u0 = (si % 4) * 0.25, v0 = Math.floor(si / 4) * 0.5;
-      // Street-level projecting vertical blade sign (visible right along the avenue at y = 9..26 m)
-      const sh = Math.min(h * 0.55, 13 + rng() * 10), sw = 2.6 + rng() * 1.3;
-      const blade = uvTileBox(sw, sh, 0.65, u0 + 0.02, v0 + 0.02, u0 + 0.23, v0 + 0.48);
-      blade.translate((rng() < 0.5 ? 1 : -1) * (w * 0.5 + sw * 0.52), Math.min(h - sh * 0.55, 7 + sh * 0.5 + rng() * 6), d * 0.32);
-      blade.applyMatrix4(m4); neonGeos.push(blade);
-      // Lower-facade street-facing neon billboard at y = 10..24 m or rooftop billboard on mid-rises
-      if (rng() < 0.7) {
-        const s2 = (si + 3) % 8, bu0 = (s2 % 4) * 0.25, bv0 = Math.floor(s2 / 4) * 0.5;
-        const bw = Math.min(w * 0.76, 14.5), bh = bw * 0.48;
-        const by = h < 46 ? h + bh * 0.52 : 11 + rng() * 12;
-        const bill = uvTileBox(bw, bh, 0.55, bu0 + 0.01, bv0 + 0.01, bu0 + 0.24, bv0 + 0.49);
-        bill.translate(0, by, d * 0.5 + 0.28);
-        bill.applyMatrix4(m4); neonGeos.push(bill);
-      }
-    }
-    const rad = Math.hypot(w, d) * 0.44;
-    placed.push(x, z, rad * 0.88);
-    if (addCol) colliders.add(x, z, Math.min(w, d) * 0.48);
   };
 
-  // 4A. Roadside city canyon rows (front row + second taller row behind it)
-  const densityK = q.lowq ? 0.65 : 1;
-  const stride = Math.max(7, Math.round(9 / densityK));
-  for (let i = 0; i < track.N; i += stride) {
-    // Skip bridge spans over open water
-    if (terrain.lakeAt(track.px[i], track.pz[i], 1.05)) continue;
-    for (const sd of [1, -1]) {
-      // Front street-wall row
-      const w = 13 + rng() * 11, d = 13 + rng() * 11;
-      const off = sd * (ROAD_HALF + 9.5 + d * 0.5 + rng() * 4.5);
-      const bx = track.px[i] + track.lx[i] * off, bz = track.pz[i] + track.lz[i] * off;
-      const rad = Math.hypot(w, d) * 0.46;
-      if (okSpot(bx, bz, rad, ROAD_HALF + 8.5)) {
-        const downtown = bx < 40;
-        const nearTower = C.tower && Math.hypot(bx - C.tower.x, bz - C.tower.z) < 280;
-        const h = nearTower ? 18 + rng() * 22 : downtown ? 26 + Math.pow(rng(), 1.35) * 92 : 20 + rng() * 54;
-        const ry = Math.atan2(-track.lx[i] * sd, -track.lz[i] * sd);
-        addBuilding(bx, bz, w, d, h, ry, h > 52 || rng() < 0.45, rng() < 0.68, true);
-      }
-      // Second tier of taller skyscrapers behind the street wall
-      if (rng() < 0.72) {
-        const w2 = 18 + rng() * 16, d2 = 18 + rng() * 16;
-        const off2 = sd * (ROAD_HALF + 34 + d2 * 0.5 + rng() * 22);
-        const bx2 = track.px[i] + track.lx[i] * off2, bz2 = track.pz[i] + track.lz[i] * off2;
-        if (okSpot(bx2, bz2, Math.hypot(w2, d2) * 0.46, ROAD_HALF + 26)) {
-          const h2 = 48 + Math.pow(rng(), 1.15) * 125;
-          const ry2 = Math.atan2(-track.lx[i] * sd, -track.lz[i] * sd);
-          addBuilding(bx2, bz2, w2, d2, h2, ry2, true, rng() < 0.42, false);
-        }
-      }
+  // Signs every street building can carry: a projecting neon blade (canvas-drawn, real Japanese) and a rooftop LED screen (gemini-image art).
+  const addSigns = (x, z, w, d, h, ry) => {
+    const m4 = new THREE.Matrix4().makeRotationY(ry).setPosition(x, terrain.heightAt(x, z) - 0.25, z);
+    if (rng() < 0.55) {
+      const si = Math.floor(rng() * 8), u0 = (si % 4) * 0.25, v0 = Math.floor(si / 4) * 0.5;
+      const sh = Math.min(h * 0.5, 9 + rng() * 9), sw = 2.4 + rng() * 1.2;
+      const blade = uvTileBox(0.5, sh, sw, u0 + 0.02, v0 + 0.02, u0 + 0.23, v0 + 0.48);
+      blade.translate((rng() < 0.5 ? 1 : -1) * w * 0.42, Math.min(h - sh * 0.55, 6 + sh * 0.5 + rng() * 5), d * 0.5 + sw * 0.5 + 0.25);
+      blade.applyMatrix4(m4); neonGeos.push(blade);
+    }
+    if (h < 64 && rng() < 0.24) {
+      const bw = Math.min(w * 0.8, 15), bh = bw * 0.56, k = Math.floor(rng() * 4);
+      const scr = uvTileBox(bw, bh, 0.5, 0, 0, 1, 1); scr.translate(0, h + 1.6 + bh / 2, d * 0.3); scr.applyMatrix4(m4); screenGeos[k].push(scr);
+      const fr = mergeGeometries([box(bw + 0.5, bh + 0.5, 0.3, 0, h + 1.6 + bh / 2, d * 0.3 - 0.3), box(0.3, 1.8, 0.3, -bw * 0.35, h + 0.8, d * 0.3 - 0.3), box(0.3, 1.8, 0.3, bw * 0.35, h + 0.8, d * 0.3 - 0.3)]);
+      fr.applyMatrix4(m4); frameGeos.push(fr);
+    }
+  };
+
+  // 4A. Street walls: buildings set shoulder to shoulder along both sides of the road, fronts (+Z) facing it.
+  const N = track.N, ds = track.ds, densityK = q.lowq ? 0.7 : 1;
+  for (const sd of [1, -1]) {
+    let i = sd > 0 ? 4 : 11, last = null;
+    while (i < N - 4) {
+      if (terrain.lakeAt(track.px[i], track.pz[i], 1.05)) { i += 5; continue; }
+      let k = null, w, d, h, s = 1;
+      if (useModels) { k = last = pick(STREET, last); h = k.h0 + rng() * (k.h1 - k.h0); s = h / k.m.size.y; w = k.m.size.x * s; d = k.m.size.z * s; }
+      else { w = 17 + rng() * 15; d = 14 + rng() * 10; h = track.px[i] < 40 ? 26 + Math.pow(rng(), 1.35) * 70 : 20 + rng() * 44; }
+      const j = Math.min(N - 1, i + Math.round((w * 0.5) / ds));
+      const off = sd * (ROAD_HALF + 7 + rng() * 3 + d * 0.5);
+      const bx = track.px[j] + track.lx[j] * off, bz = track.pz[j] + track.lz[j] * off, rad = Math.min(w, d) * 0.5;
+      if (!okSpot(bx, bz, rad, ROAD_HALF + 5.5 + d * 0.5)) { i += 4; continue; }
+      const ry = Math.atan2(-track.lx[j] * sd, -track.lz[j] * sd);
+      if (k) k.list.push({ x: bx, y: terrain.heightAt(bx, bz) - 0.25, z: bz, ry, s, sy: s * (0.96 + rng() * 0.1) });
+      else addBox(bx, bz, w, d, h, ry, h > 52 ? 'glass' : rng() < 0.5 ? 'office' : 'apartment', true);
+      if (h > 12) addSigns(bx, bz, w, d, h, ry);
+      placed.push(bx, bz, rad * 0.95);
+      for (const o of w > d * 1.4 ? [-(w - d) / 2, 0, (w - d) / 2] : [0]) colliders.add(bx + track.tx[j] * o, bz + track.tz[j] * o, Math.min(w, d) * 0.5);
+      i = j + Math.max(2, Math.round((w * 0.5 + (1.5 + rng() * 4.5) / densityK) / ds));
     }
   }
 
-  // 4B. Distant Shinjuku / Marunouchi / Hamamatsucho / Toyosu skyline clusters visible across Tokyo Bay
+  // 4B. Second tier: skyscrapers standing behind the street wall.
+  for (let i = 0; i < N; i += Math.round(44 / ds / densityK)) {
+    if (terrain.lakeAt(track.px[i], track.pz[i], 1.05)) continue;
+    for (const sd of [1, -1]) {
+      const downtown = track.px[i] < 40;
+      if (rng() > (downtown ? 0.85 : 0.5)) continue;
+      let k = null, w, d, h, s = 1;
+      if (useModels) { k = pick(TOWERS, null); h = (k.h0 + rng() * (k.h1 - k.h0)) * (downtown ? 1 : 0.8); s = h / k.m.size.y; w = k.m.size.x * s; d = k.m.size.z * s; }
+      else { w = 20 + rng() * 16; d = 20 + rng() * 16; h = 60 + Math.pow(rng(), 1.15) * 120; }
+      const off = sd * (ROAD_HALF + 52 + d * 0.5 + rng() * 44);
+      const bx = track.px[i] + track.lx[i] * off, bz = track.pz[i] + track.lz[i] * off, rad = Math.hypot(w, d) * 0.42;
+      if (!okSpot(bx, bz, rad, ROAD_HALF + 40 + d * 0.5)) continue;
+      const ry = Math.atan2(-track.lx[i] * sd, -track.lz[i] * sd) + Math.floor(rng() * 4) * (Math.PI / 2);
+      if (k) k.list.push({ x: bx, y: terrain.heightAt(bx, bz) - 0.4, z: bz, ry, s, sy: s });
+      else addBox(bx, bz, w, d, h, ry, 'glass', false);
+      placed.push(bx, bz, rad);
+    }
+  }
+  // Beyond the switch distance each building is a 10-triangle box impostor baked from the same texture (build_models.mjs).
+  for (const k of [...STREET, ...TOWERS]) group.add(scatter(k.m, k.list, { cell: 110, dist: [300], cast: 2 }));
+
+  // 4C. Street furniture: vending machines glowing on the pavement and taxis parked at the kerb (ground-level streets only).
+  {
+    const vend = M('city_vending'), taxi = M('city_taxi'), vendItems = [], taxiItems = [];
+    const atGrade = (i, x, z) => track.py[i] - terrain.heightAt(x, z) < 0.7 && !terrain.lakeAt(x, z, 1.1);
+    for (let i = 30; i < N - 30; i += Math.round(64 / ds)) {
+      const sd = rng() < 0.5 ? 1 : -1, j = i + Math.floor(rng() * 12);
+      if (vend) {
+        const off = sd * (ROAD_HALF + 5.9), x = track.px[j] + track.lx[j] * off, z = track.pz[j] + track.lz[j] * off;
+        if (atGrade(j, x, z)) { vendItems.push({ x, y: terrain.heightAt(x, z) - 0.03, z, ry: Math.atan2(-track.lx[j] * sd, -track.lz[j] * sd), s: 1.95 / vend.size.y }); colliders.add(x, z, 1.1); }
+      }
+      if (taxi && rng() < 0.6) {
+        const jj = (j + 14) % N, off = -sd * (ROAD_HALF + 2.75), x = track.px[jj] + track.lx[jj] * off, z = track.pz[jj] + track.lz[jj] * off;
+        if (atGrade(jj, x, z)) { taxiItems.push({ x, y: terrain.heightAt(x, z) - 0.02, z, ry: Math.atan2(track.tx[jj], track.tz[jj]), s: 4.7 / Math.max(taxi.size.x, taxi.size.z) }); colliders.add(x, z, 1.5); }
+      }
+    }
+    if (vend) group.add(scatter(vend, vendItems, { cell: 60, dist: [90, 260], far: 700, cast: 1 }));
+    if (taxi) group.add(scatter(taxi, taxiItems, { cell: 60, dist: [110, 300], far: 800, cast: 1 }));
+  }
+
+  // 4D. Distant Shinjuku / Marunouchi / Hamamatsucho / Toyosu skyline clusters visible across Tokyo Bay
   const clusters = C.clusters || [
     [-620, 120, 320, 52], [-560, -420, 260, 38], [-180, 960, 250, 34],
     [-145, 90, 165, 36], [-150, -250, 155, 28], [920, -60, 210, 26],
@@ -610,7 +628,8 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}) {
       const w = 22 + rng() * 22, d = 22 + rng() * 22;
       if (!okSpot(x, z, Math.hypot(w, d) * 0.45, 36)) continue;
       const h = 65 + Math.pow(rng(), 1.1) * 155;
-      addBuilding(x, z, w, d, h, rng() * Math.PI * 0.5, true, rng() < 0.3, false);
+      addBox(x, z, w, d, h, rng() * Math.PI * 0.5, rng() < 0.6 ? 'glass' : rng() < 0.6 ? 'office' : 'apartment', false);
+      placed.push(x, z, Math.hypot(w, d) * 0.4);
     }
   }
 
@@ -620,14 +639,23 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}) {
     m.castShadow = cast; m.receiveShadow = true;
     group.add(m);
   };
-  addBatch(glassGeos, matGlass, !q.lowq);
-  addBatch(midGeos, matMid, !q.lowq);
-  addBatch(roofGeos, roofMat, false);
-  addBatch(neonGeos, neonMat, false);
-  addBatch(beaconGeos, beaconMat, false);
+  const facadeMat = (file, roughness, metalness) => nightGlow(new THREE.MeshStandardMaterial({ map: loadTexture(`city/${file}.webp`), roughness, metalness, envMapIntensity: 1.3 }), 0.2, 0.55, 2.1);
+  addBatch(facades.glass, facadeMat('facade_glass', 0.26, 0.5), !q.lowq);
+  addBatch(facades.office, facadeMat('facade_office', 0.6, 0.15), !q.lowq);
+  addBatch(facades.apartment, facadeMat('facade_apartment', 0.7, 0.05), !q.lowq);
+  addBatch(retailGeos, nightGlow(new THREE.MeshStandardMaterial({ map: loadTexture('city/facade_retail.webp'), roughness: 0.5 }), 0.12, 0.5, 2.4));
+  addBatch(roofGeos, new THREE.MeshStandardMaterial({ color: 0x151922, roughness: 0.85 }));
+  addBatch(frameGeos, new THREE.MeshStandardMaterial({ color: 0x1a1e27, roughness: 0.6, metalness: 0.5 }));
+  addBatch(neonGeos, new THREE.MeshBasicMaterial({ map: neonAtlasTexture() }));
+  addBatch(beaconGeos, new THREE.MeshBasicMaterial({ color: 0xff2038 }));
+  ['a', 'b', 'c', 'd'].forEach((n, k) => addBatch(screenGeos[k], new THREE.MeshBasicMaterial({ map: loadTexture(`city/billboard_${n}.webp`, { wrap: THREE.ClampToEdgeWrapping }), color: 0xd8d8d8 })));
 
   // 5. Landmarks: Tokyo Tower, Rainbow Suspension Bridge, Odaiba Ferris Wheel
-  if (C.tower) group.add(buildTokyoTower(C.tower.x, terrain.heightAt(C.tower.x, C.tower.z) - 0.5, C.tower.z));
+  if (C.tower) {
+    const lt = q.models === 'full' ? M('city_lattice_tower') : null, ty = terrain.heightAt(C.tower.x, C.tower.z) - 0.5;
+    if (lt) group.add(scatter(lt, [{ x: C.tower.x, y: ty, z: C.tower.z, ry: 0, s: 333 / lt.size.y }], { cell: 4000, dist: [1e6], cast: 0 }));
+    else group.add(buildTokyoTower(C.tower.x, ty, C.tower.z));
+  }
   if (C.bridge) group.add(buildSuspensionBridge(track, terrain, C.bridge));
   if (C.ferris) group.add(buildFerrisWheel(C.ferris.x, terrain.heightAt(C.ferris.x, C.ferris.z) - 0.5, C.ferris.z, C.ferris.ry || 0));
 

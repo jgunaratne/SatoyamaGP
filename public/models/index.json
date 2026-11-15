@@ -59,6 +59,66 @@
   "lods": 4,
   "v": "c3483331b4"
  },
+ "city_apartment": {
+  "kind": "city",
+  "lods": 2,
+  "v": "d88c32bb6b"
+ },
+ "city_dept": {
+  "kind": "city",
+  "lods": 2,
+  "v": "ede32a211d"
+ },
+ "city_konbini": {
+  "kind": "city",
+  "lods": 2,
+  "v": "6400bda025"
+ },
+ "city_lattice_tower": {
+  "kind": "city",
+  "lods": 2,
+  "v": "a54679d225"
+ },
+ "city_office_a": {
+  "kind": "city",
+  "lods": 2,
+  "v": "1ccecb945c"
+ },
+ "city_taxi": {
+  "kind": "prop",
+  "lods": 3,
+  "v": "ee360e32ce"
+ },
+ "city_tower_a": {
+  "kind": "city",
+  "lods": 2,
+  "v": "2d024f072e"
+ },
+ "city_tower_b": {
+  "kind": "city",
+  "lods": 2,
+  "v": "6dc4d7a247"
+ },
+ "city_tower_c": {
+  "kind": "city",
+  "lods": 2,
+  "v": "258ba66bac"
+ },
+ "city_vending": {
+  "kind": "prop",
+  "lods": 3,
+  "v": "57702543b0"
+ },
+ "city_zakkyo_a": {
+  "kind": "city",
+  "lods": 2,
+  "v": "ccef48909c"
+ },
+ "city_zakkyo_b": {
+  "kind": "city",
+  "lods": 2,
+  "v": "f54d010419"
+ },
  "farmhouse_a": {
   "kind": "build",
   "lods": 3,

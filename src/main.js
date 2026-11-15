@@ -142,10 +142,13 @@ async function build() {
   sky = buildSky(scene, renderer, Q.lowq, { x: track.px[0], z: track.pz[0], heading: h0 });
   sky.sun.shadow.mapSize.set(Q.shadow, Q.shadow);
   await tick('LOADING 3D MODELS', 46);
-  if (Q.models !== 'off' && !params.has('nomodels')) await models.load(Q.models === 'lite' ? 1 : 0, (f) => { loadBar.style.width = 46 + f * 6 + '%'; });
+  // Each course only downloads the models it uses: the city set on city courses, the countryside set elsewhere.
+  const RURAL = /^(farmhouse|kura|kei_truck|torii|lantern|hokora|cedar|bamboo|pine|grass|fern|nanohana|boulder|lighthouse|tetrapod|fishing_boat)/;
+  const wanted = (id) => (LEVEL.city ? !RURAL.test(id) : !id.startsWith('city_'));
+  if (Q.models !== 'off' && !params.has('nomodels')) await models.load(Q.models === 'lite' ? 1 : 0, (f) => { loadBar.style.width = 46 + f * 6 + '%'; }, wanted);
   await tick(LEVEL.city ? 'RAISING SKYSCRAPERS' : 'BUILDING VILLAGES', 52);
   const props = buildProps(scene, track, terrain, colliders, models, Q, LEVEL);
-  buildCity(scene, track, terrain, colliders, LEVEL, Q);
+  buildCity(scene, track, terrain, colliders, LEVEL, Q, models);
   await tick(LEVEL.city ? 'PAVING EXPRESSWAYS' : 'FLOODING RICE PADDIES', 62);
   const tmat = terrain.buildMaterial(Q.lowq);
   scene.add(terrain.buildMesh(), buildShoulders(track, tmat, LEVEL), buildRoad(track), buildGuardrails(track));

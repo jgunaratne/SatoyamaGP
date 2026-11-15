@@ -20,18 +20,22 @@ mkdir -p "${OUT_DIR}" "${TMP}"
 
 STYLE="Write the longest full-length piece you can: an extended instrumental of well over three minutes with an intro, build-up, a hard-hitting drop, a second verse, a breakdown, a bigger second drop and an outro that leads back into the intro so it loops. Modern racing video game soundtrack, the kind of current electronic music heard in today's big-budget street and festival racing games: contemporary club-ready production, a loud punchy beat that never lets up, heavy sidechained sub bass, crisp modern drums, wide glossy synths, cinematic risers and impacts. Unmistakably Japanese: traditional Japanese instruments (shamisen, koto, shakuhachi, taiko) and Japanese pentatonic melodies are featured as the lead hooks on top of the electronic beat, set on a mountain road through the Japanese countryside in cherry-blossom season. Loud, clean, polished 2020s master. No vocals, no lyrics, no spoken words, instrumental only."
 
+# Night-city courses keep the production brief but swap the countryside setting for the city and ask for a brighter mood.
+STYLE_CITY="${STYLE/set on a mountain road through the Japanese countryside in cherry-blossom season/set on the neon-lit elevated expressways of Tokyo at night. Bright, upbeat, feel-good major-key energy throughout, never dark or moody}"
+
 dur() { ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | cut -d. -f1; }
 
 gen() {
   local name="$1"; shift
   local dst="${OUT_DIR}/${name}.mp3"
   if [ -z "${FORCE:-}" ] && [ -s "${dst}" ]; then echo "= ${name} exists ($(dur "${dst}")s)"; return; fi
-  local best="" best_d=0 i take d
+  local best="" best_d=0 i take d style="${STYLE}"
+  case "${name}" in tokyo*) style="${STYLE_CITY}" ;; esac
   for i in $(seq 1 "${TRIES}"); do
     take="${TMP}/${name}_${i}.mp3"
     if [ -n "${FORCE:-}" ] || [ ! -s "${take}" ]; then
       rm -f "${take}"
-      "$G" -prod -timeout=600s -output="${take}" music -model=lyria-3-full-song-mp3 "$* ${STYLE}" 2>&1 \
+      "$G" -prod -timeout=600s -output="${take}" music -model=lyria-3-full-song-mp3 "$* ${style}" 2>&1 \
         | grep -E "Successfully|rror|denied|quota" | tail -2
     fi
     [ -s "${take}" ] || { echo "! ${name} take ${i} failed"; continue; }
@@ -68,8 +72,8 @@ TRACKS[hakone2]="Race theme for hairpin bends through a cedar forest at dusk: hi
 TRACKS[coast1]="Race theme for a sunlit Japanese coastal highway beside crashing turquoise ocean surf: euphoric high-tempo Japanese city-pop fusion and melodic drum and bass at 170 BPM in A major, crisp rolling breakbeat, slap-bass groove layered over warm sub bass, sparkling electric piano chords, soaring brass section hits, bright clean rhythm guitar skanks, and a joyous glossy synth-and-saxophone lead trading phrases with plucked shamisen runs; breezy, sun-drenched summer ocean drive adrenaline. Instrumental, no vocals."
 TRACKS[coast2]="Race theme for sweeping cliffside ocean bends and fishing villages by the sea: driving melodic progressive house and nu-disco synthwave at 132 BPM in F-sharp minor lifting to A major, punchy four-on-the-floor kick, pumping sidechained arpeggiated synth bass, shimmering 12-string guitar and koto plucks, bright trumpet and synth brass stabs, crashing surf-like white-noise risers into a huge sunlit anthemic chorus lead; exhilarating open-water horizon energy. Instrumental, no vocals."
 # Tokyo Shuto Expressway has its own neon night-expressway playlist (levels.js `music`).
-TRACKS[tokyo1]="Race theme for high-speed midnight street racing through neon-lit Tokyo skyscraper canyons and elevated expressways: slick, propulsive dark synthwave meets modern Japanese future-funk and drum-and-bass at 172 BPM in C minor, tight punchy breakbeat, deep rolling Reese and slap bass, glossy neon analog arpeggios, an electrifying shamisen and soprano sax trade-off over shimmering Tokyo night chords, taiko impact hits into a massive euphoric midnight-highway drop. Stylish, futuristic, nocturnal metropolis velocity. Instrumental, no vocals."
-TRACKS[tokyo2]="Race theme for flat-out racing across an illuminated suspension bridge over Tokyo Bay at night: hard-hitting cyberpunk electro-house and Japanese melodic techno-trance at 138 BPM in E minor, pounding four-on-the-floor kick, relentless 16th-note acid and sub bassline, crisp hi-hats, a hypnotic koto and supersaw lead hook echoing through city canyons, dramatic breakdown with breathy shakuhachi over city-lights pads before a huge second drop. High-stakes nocturnal expressway adrenaline. Instrumental, no vocals."
+TRACKS[tokyo1]="Race theme for a joyful night drive through neon-lit Tokyo: bright, upbeat Japanese future funk and city-pop nu-disco house at 128 BPM in E-flat major, bouncy four-on-the-floor kick with hand claps, a funky octave-jumping slap bass groove, chicken-scratch rhythm guitar, sparkling electric piano major-seventh chords, punchy chopped brass stabs, glittering synth arpeggios and an irresistibly catchy, happy lead synth hook doubled by plucked koto, with a filter-sweep breakdown and an even bigger feel-good final chorus with a key lift. Fun, glamorous, dance-floor energy, smiling at 200 km/h. Instrumental, no vocals."
+TRACKS[tokyo2]="Race theme for flat-out fun on the Tokyo expressway at night: exhilarating, upbeat high-energy Japanese arcade racing eurobeat and J-pop style hyper dance at 158 BPM in A major, pounding four-on-the-floor kick, galloping octave synth bass, bright triumphant supersaw anthem melody, blazing tsugaru shamisen riffs answering the lead, sparkling bell arpeggios, snare-roll build-ups, crowd-pleasing key change into the last chorus, taiko fills before each drop. Sunny, heroic, celebratory, pure arcade joy and speed. Instrumental, no vocals."
 ORDER=(title race1 race2 race3 results hakone1 hakone2 coast1 coast2 tokyo1 tokyo2)
 [ "$#" -gt 0 ] && ORDER=("$@")
 

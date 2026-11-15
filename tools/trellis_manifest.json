@@ -259,6 +259,114 @@
       "decimation_target": 120000,
       "texture_size": 2048,
       "seed": 63
+    },
+    {
+      "id": "city_tower_a",
+      "prompt": "forty-storey modern Tokyo office skyscraper, rectangular glass curtain-wall tower with slim aluminium mullions and dark spandrel bands, double-height glazed lobby at the base, mechanical crown with two red aviation warning lights, hundreds of lit office windows in an irregular pattern",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 70000,
+      "texture_size": 2048,
+      "seed": 71
+    },
+    {
+      "id": "city_tower_b",
+      "prompt": "slender thirty-five-storey Tokyo high-rise tower with rounded corners, dark blue reflective glass and vertical white fins, a softly illuminated crown band at the top, lit office floors in horizontal bands, rooftop antenna mast",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 70000,
+      "texture_size": 2048,
+      "seed": 72
+    },
+    {
+      "id": "city_tower_c",
+      "prompt": "stepped postmodern thirty-storey Tokyo skyscraper of pale granite and glass with two setbacks and a pyramidal illuminated top, deep-set grid windows many of them lit, retail arcade with glowing shopfronts at street level",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 70000,
+      "texture_size": 2048,
+      "seed": 73
+    },
+    {
+      "id": "city_office_a",
+      "prompt": "twelve-storey Japanese mid-rise office building clad in pale grey tiles with long ribbon windows, lit offices, ground floor with glowing shopfronts and a restaurant, rooftop air-conditioning units and a water tank",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 74
+    },
+    {
+      "id": "city_zakkyo_a",
+      "prompt": "narrow eight-storey Japanese downtown multi-tenant commercial building, its street facade stacked with glowing vertical and horizontal neon signboards in pink, cyan, yellow and red for restaurants, karaoke and arcades with generic fictional Japanese characters, brightly lit shop entrance at ground level, external staircase on one side",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 75
+    },
+    {
+      "id": "city_zakkyo_b",
+      "prompt": "ten-storey Japanese entertainment district corner building with a giant glowing LED video billboard wrapping the upper corner, rows of colourful illuminated signboards on every floor with generic fictional Japanese characters, glass ground-floor game arcade spilling bright light",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 76
+    },
+    {
+      "id": "city_apartment",
+      "prompt": "fourteen-storey Japanese residential apartment block with white tiled walls, rows of balconies with railings, about half of the windows glowing warm yellow behind curtains, open exterior corridor and lift tower on the rear side, flat roof",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 77
+    },
+    {
+      "id": "city_dept",
+      "prompt": "nine-storey Japanese department store building with a wide curved glass corner facade glowing from inside, large illuminated advertising panels with abstract colourful graphics and no text, an awning-covered glowing ground-floor entrance, rooftop signage frame",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 60000,
+      "texture_size": 2048,
+      "seed": 78
+    },
+    {
+      "id": "city_konbini",
+      "prompt": "single-storey Japanese convenience store building with a brightly lit glass shopfront showing stocked shelves, a plain glowing fascia sign band in violet and yellow with no text, flat roof with an air-conditioning unit",
+      "style": "photorealistic architectural photograph of one single complete freestanding building at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring buildings, no real brand logos, isolated on a plain neutral mid-grey studio background, entire building in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "hero",
+      "decimation_target": 50000,
+      "texture_size": 2048,
+      "seed": 83
+    },
+    {
+      "id": "city_lattice_tower",
+      "prompt": "tall slender red-and-white painted steel lattice broadcasting and observation tower in Tokyo, four curved splayed lattice legs joined by arches at the base, a two-storey observation deck one third of the way up and a smaller upper deck, tapering to a thin antenna spire, floodlit warm orange at night, complete tower",
+      "style": "photorealistic architectural photograph of one single complete freestanding structure at night, interior lights switched on so many windows glow warm white and cool white, the whole exterior facade evenly and clearly visible with fine realistic material detail, true-to-life proportions, no harsh shadows, no ground plane, no street, no people, no vehicles, no neighbouring structures, no real brand logos, isolated on a plain neutral mid-grey studio background, entire structure in frame from ground floor to rooftop, three-quarter corner view",
+      "preset": "ultra",
+      "decimation_target": 150000,
+      "texture_size": 2048,
+      "seed": 80
+    },
+    {
+      "id": "city_vending",
+      "prompt": "row of three Japanese drink vending machines side by side, glowing white illuminated display windows full of bottles and cans, one red, one white and one blue cabinet, no brand logos",
+      "style": "photorealistic real-world photograph reference of a single object at night with its own lights switched on and glowing, true-to-life proportions, fine surface detail, evenly visible, no ground plane, no people, no real brand logos, isolated on a plain neutral mid-grey studio background, entire object in frame, three-quarter view",
+      "preset": "hero",
+      "decimation_target": 30000,
+      "texture_size": 1024,
+      "seed": 81
+    },
+    {
+      "id": "city_taxi",
+      "prompt": "Japanese city taxi sedan with dark green and yellow two-tone paint, an illuminated roof sign lamp, headlights and red tail lights switched on, realistic production vehicle, no logos, no text",
+      "style": "photorealistic real-world photograph reference of a single object at night with its own lights switched on and glowing, true-to-life proportions, fine surface detail, evenly visible, no ground plane, no people, no real brand logos, isolated on a plain neutral mid-grey studio background, entire object in frame, three-quarter view",
+      "preset": "hero",
+      "decimation_target": 50000,
+      "texture_size": 1024,
+      "seed": 82
     }
   ]
 }

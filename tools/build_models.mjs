@@ -2,6 +2,8 @@
 //   level 0   : the full-detail mesh, meshopt-compressed with WebP PBR textures
 //   LODs 1+   : vertex clustering with the base colour baked into vertex colours, no textures. TRELLIS foliage is
 //               thousands of loose shells, which edge-collapse cannot reduce; clustering can, and stays tiny.
+//   buildings : (kind 'city') the far level is a box impostor instead: the model rendered from its four sides and
+//               from above into one atlas, on five alpha-cut quads. Windows stay sharp at any distance for 10 triangles.
 // usage: GT_MODULES=/dir/with/node_modules node tools/build_models.mjs [id ...] [--force]
 //   needs @gltf-transform/cli (which brings @gltf-transform/core and sharp); GT_MODULES defaults to this repo.
 import { execFileSync } from 'node:child_process';
@@ -21,7 +23,7 @@ const SRC = process.env.SRC || join(ROOT, 'assets_src/models'), OUT = join(ROOT,
 
 // Texture budget (VRAM is the limit on the GPU, not download size): only level 0 carries a texture, the base colour.
 // Scenery is dielectric with constant roughness. Cars get per-vertex roughness/metalness (see smoothSurface).
-const tex = (size, smooth = null) => ({ mode: 'tex', size, smooth }), vc = (tris) => ({ mode: 'vc', tris });
+const tex = (size, smooth = null) => ({ mode: 'tex', size, smooth }), vc = (tris) => ({ mode: 'vc', tris }), boxLod = (size) => ({ mode: 'box', size });
 const CHAINS = {
   car: [tex(2048, [5, 16]), vc(14000)],   // smooth: [position passes, normal passes]
   tree: [tex(1024), vc(22000), vc(3200), vc(300)],
@@ -29,13 +31,15 @@ const CHAINS = {
   bush: [tex(1024), vc(7000), vc(900)],
   build: [tex(2048), vc(24000), vc(2600)],
   prop: [tex(1024), vc(7000), vc(800)],
+  city: [tex(2048), boxLod(512)],   // night-lit city blocks: see writeImpostor
 };
 const KIND = (id) =>
   /^car_/.test(id) ? 'car'
     : /^(sakura|cedar|zelkova|pine|bamboo)/.test(id) ? 'tree'
       : /^(grass|fern|nanohana)/.test(id) ? 'grass'
         : /^(azalea|shrub)/.test(id) ? 'bush'
-          : /^(farmhouse|kura|lighthouse|fishing_boat)/.test(id) ? 'build' : 'prop';
+          : /^(farmhouse|kura|lighthouse|fishing_boat)/.test(id) ? 'build'
+            : /^city_(taxi|vending)/.test(id) ? 'prop' : /^city_/.test(id) ? 'city' : 'prop';
 
 const io = new NodeIO();
 const srgb2lin = new Float32Array(256).map((_, i) => { const c = i / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
@@ -288,6 +292,87 @@ async function writeClustered(src, target, out) {
   return I.length / 3;
 }
 
+// Box impostor: software-rasterise the textured mesh orthographically from +Z, +X, -Z, -X and +Y into a 3 x 2 atlas of
+// T-pixel tiles (alpha = coverage), and write five quads on the faces of the bounding box that show them.
+async function writeImpostor(file, T, out) {
+  const doc = await io.read(file), prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
+  const pos = prim.getAttribute('POSITION').getArray(), uv = prim.getAttribute('TEXCOORD_0').getArray(), idx = prim.getIndices().getArray();
+  const { data: tx, info } = await sharp(Buffer.from(prim.getMaterial().getBaseColorTexture().getImage())).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const min = [1e9, 1e9, 1e9], max = [-1e9, -1e9, -1e9];
+  for (let i = 0; i < pos.length; i += 3) for (let c = 0; c < 3; c++) { if (pos[i + c] < min[c]) min[c] = pos[i + c]; if (pos[i + c] > max[c]) max[c] = pos[i + c]; }
+  // per view: outward normal n, image-right axis r, image-up axis u (r x u = n)
+  const VIEWS = [
+    { n: [0, 0, 1], r: [1, 0, 0], u: [0, 1, 0] }, { n: [1, 0, 0], r: [0, 0, -1], u: [0, 1, 0] }, { n: [0, 0, -1], r: [-1, 0, 0], u: [0, 1, 0] },
+    { n: [-1, 0, 0], r: [0, 0, 1], u: [0, 1, 0] }, { n: [0, 1, 0], r: [1, 0, 0], u: [0, 0, -1] },
+  ];
+  const W = 3 * T, H = 2 * T, atlas = new Uint8Array(W * H * 4), P = [], N = [], UV = [], I = [];
+  const dot = (a, i) => a[0] * pos[i] + a[1] * pos[i + 1] + a[2] * pos[i + 2];
+  const range = (a) => { let lo = 0, hi = 0; for (let c = 0; c < 3; c++) { lo += a[c] * (a[c] > 0 ? min[c] : max[c]); hi += a[c] * (a[c] > 0 ? max[c] : min[c]); } return [lo, hi]; };
+  VIEWS.forEach((v, k) => {
+    const [r0, r1] = range(v.r), [u0, u1] = range(v.u), [, d1] = range(v.n), ox = (k % 3) * T, oy = Math.floor(k / 3) * T;
+    const zb = new Float32Array(T * T).fill(-Infinity), sx = T / (r1 - r0), sy = T / (u1 - u0);
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ax = (dot(v.r, a) - r0) * sx, ay = (dot(v.u, a) - u0) * sy, bx = (dot(v.r, b) - r0) * sx, by = (dot(v.u, b) - u0) * sy, cx = (dot(v.r, c) - r0) * sx, cy = (dot(v.u, c) - u0) * sy;
+      const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      if (Math.abs(area) < 1e-9) continue;
+      const za = dot(v.n, a), zb2 = dot(v.n, b), zc = dot(v.n, c);
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(T - 1, Math.ceil(Math.max(ax, bx, cx)));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy))), y1 = Math.min(T - 1, Math.ceil(Math.max(ay, by, cy)));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const px = x + 0.5, py = y + 0.5;
+        const w0 = ((bx - px) * (cy - py) - (by - py) * (cx - px)) / area, w1 = ((cx - px) * (ay - py) - (cy - py) * (ax - px)) / area, w2 = 1 - w0 - w1;
+        if (w0 < -0.02 || w1 < -0.02 || w2 < -0.02) continue;
+        const z = w0 * za + w1 * zb2 + w2 * zc, zi = y * T + x;
+        if (z <= zb[zi]) continue;
+        zb[zi] = z;
+        let tu = w0 * uv[idx[t] * 2] + w1 * uv[idx[t + 1] * 2] + w2 * uv[idx[t + 2] * 2], tv = w0 * uv[idx[t] * 2 + 1] + w1 * uv[idx[t + 1] * 2 + 1] + w2 * uv[idx[t + 2] * 2 + 1];
+        tu -= Math.floor(tu); tv -= Math.floor(tv);
+        const so = (Math.min(info.height - 1, Math.floor(tv * info.height)) * info.width + Math.min(info.width - 1, Math.floor(tu * info.width))) * 3;
+        const o = ((oy + T - 1 - y) * W + ox + x) * 4;
+        atlas[o] = tx[so]; atlas[o + 1] = tx[so + 1]; atlas[o + 2] = tx[so + 2]; atlas[o + 3] = 255;
+      }
+    }
+    // quad on the bounding-box face, corners (r0,u0) (r1,u0) (r1,u1) (r0,u1); half a texel in from the tile edge
+    const base = P.length / 3, e = 0.5;
+    for (const [rr, uu, fu, fv] of [[r0, u0, 0, 1], [r1, u0, 1, 1], [r1, u1, 1, 0], [r0, u1, 0, 0]]) {
+      P.push(v.n[0] * d1 + v.r[0] * rr + v.u[0] * uu, v.n[1] * d1 + v.r[1] * rr + v.u[1] * uu, v.n[2] * d1 + v.r[2] * rr + v.u[2] * uu);
+      N.push(...v.n);
+      UV.push((ox + e + fu * (T - 2 * e)) / W, (oy + e + fv * (T - 2 * e)) / H);
+    }
+    I.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  });
+  // bleed colour into the empty texels around the silhouette so mipmaps do not pull in black
+  for (let pass = 0; pass < 8; pass++) {
+    const src = atlas.slice();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      if (src[o + 3] || (pass && (src[o] || src[o + 1] || src[o + 2]))) continue;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H || Math.floor(xx / T) !== Math.floor(x / T) || Math.floor(yy / T) !== Math.floor(y / T)) continue;
+        const q = (yy * W + xx) * 4;
+        if (src[q + 3] || src[q] || src[q + 1] || src[q + 2]) { r += src[q]; g += src[q + 1]; b += src[q + 2]; n++; }
+      }
+      if (n) { atlas[o] = Math.max(1, r / n); atlas[o + 1] = g / n; atlas[o + 2] = b / n; }
+    }
+  }
+  const png = await sharp(Buffer.from(atlas.buffer), { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+  const od = new Document(), buf = od.createBuffer(), acc = (type, arr) => od.createAccessor().setType(type).setArray(arr).setBuffer(buf);
+  const mat = od.createMaterial('impostor').setBaseColorTexture(od.createTexture('atlas').setImage(png).setMimeType('image/png'))
+    .setAlphaMode('MASK').setAlphaCutoff(0.5).setRoughnessFactor(0.7).setMetallicFactor(0);
+  const op = od.createPrimitive().setAttribute('POSITION', acc('VEC3', new Float32Array(P))).setAttribute('NORMAL', acc('VEC3', new Float32Array(N)))
+    .setAttribute('TEXCOORD_0', acc('VEC2', new Float32Array(UV))).setIndices(acc('SCALAR', new Uint16Array(I))).setMaterial(mat);
+  od.createScene().addChild(od.createNode('lod').setMesh(od.createMesh('lod').addPrimitive(op)));
+  const tmp = out + '.tmp.glb';
+  await io.write(tmp, od);
+  execFileSync(BIN, ['optimize', tmp, out, '--compress', 'meshopt', '--texture-compress', 'webp', '--texture-size', '2048', '--simplify', 'false', '--palette', 'false',
+    '--instance', 'false', '--prune-solid-textures', 'false', '--weld', 'false', '--join', 'false', '--flatten', 'false'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  rmSync(tmp);
+  return I.length / 3;
+}
+
 const args = process.argv.slice(2), force = args.includes('--force'), only = args.filter((a) => !a.startsWith('--'));
 mkdirSync(OUT, { recursive: true });
 const index = {};
@@ -314,6 +399,8 @@ for (const f of readdirSync(SRC).filter((n) => n.endsWith('.glb')).sort()) {
       execFileSync(BIN, ['optimize', tmp, out, '--compress', 'meshopt', '--texture-compress', 'webp', '--texture-size', String(lvl.size),
         '--simplify', 'false', '--palette', 'false', '--instance', 'false', '--prune-solid-textures', 'false', '--prune-attributes', 'false'], { stdio: ['ignore', 'ignore', 'inherit'] });
       rmSync(tmp);
+    } else if (lvl.mode === 'box') {
+      tris = ` ${await writeImpostor(file, lvl.size, out)} tris`;
     } else {
       src = src || await readSource(file);
       tris = ` ${await writeClustered(src, lvl.tris, out)} tris`;
