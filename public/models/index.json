@@ -74,6 +74,11 @@
   "lods": 3,
   "v": "5607616545"
  },
+ "fishing_boat": {
+  "kind": "build",
+  "lods": 3,
+  "v": "12d031d02b"
+ },
  "grass_a": {
   "kind": "grass",
   "lods": 3,
@@ -104,6 +109,11 @@
   "lods": 3,
   "v": "5c26f6b798"
  },
+ "lighthouse": {
+  "kind": "build",
+  "lods": 3,
+  "v": "5e4517de8e"
+ },
  "nanohana": {
   "kind": "grass",
   "lods": 3,
@@ -133,6 +143,11 @@
   "kind": "bush",
   "lods": 3,
   "v": "297ac39efe"
+ },
+ "tetrapod": {
+  "kind": "prop",
+  "lods": 3,
+  "v": "e550a68129"
  },
  "torii": {
   "kind": "prop",

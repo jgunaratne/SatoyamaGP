@@ -159,7 +159,7 @@ function instanced(geo, mat, list, cast = true) {
   return m;
 }
 
-export function buildProps(scene, track, terrain, colliders, models = null, q = {}) {
+export function buildProps(scene, track, terrain, colliders, models = null, q = {}, level = {}) {
   const M = (id) => (models ? models.get(id) : null);
   const group = new THREE.Group();
   scene.add(group);
@@ -177,6 +177,34 @@ export function buildProps(scene, track, terrain, colliders, models = null, q = 
   const variants = [makeHouse(7.2, 3.6, 3.0, 1.35, 2.3), makeHouse(5.4, 3.6, 2.9, 1.25, 2.1), makeKura()];
   const lists = [[], [], []], yardTrees = [], yards = [];
   let houses = 0;
+  if (level.villages) {
+    // Coastal fishing-town houses placed along the landward side of specified road stretches
+    for (const [zMin, zMax, stride] of level.villages) {
+      for (let i = 25; i < track.N - 25; i += stride) {
+        const rx = track.px[i], rz = track.pz[i];
+        if (rz < zMin || rz > zMax) continue;
+        // Landward side (+X on the west-facing coast)
+        const lat = track.lx[i] > 0 ? 1 : -1;
+        const off = lat * (ROAD_HALF + 16 + (rng() * 8));
+        const hx = rx + track.lx[i] * off, hz = rz + track.lz[i] * off;
+        if (terrain.distAt(hx, hz) < 15 || terrain.lakeAt(hx, hz, 1.2) || terrain.slopeAt(hx, hz) > 0.45) continue;
+        const h = terrain.heightAt(hx, hz);
+        const ry = Math.atan2(-track.lx[i] * lat, -track.lz[i] * lat);
+        const v = rng() < 0.5 ? 0 : 1;
+        lists[v].push({ x: hx, y: h, z: hz, ry });
+        colliders.add(hx, hz, 4.3);
+        if (rng() < 0.45) {
+          const kx = hx + track.tx[i] * 11, kz = hz + track.tz[i] * 11;
+          if (terrain.distAt(kx, kz) > 13 && !terrain.lakeAt(kx, kz, 1.2)) {
+            lists[2].push({ x: kx, y: terrain.heightAt(kx, kz), z: kz, ry });
+            colliders.add(kx, kz, 3.4);
+          }
+        }
+        yards.push({ x: hx, z: hz, h, f: lat, ry });
+        yardTrees.push({ x: hx - track.tx[i] * 10, y: h, z: hz - track.tz[i] * 10, green: true });
+      }
+    }
+  }
   for (const cell of terrain.cells) {
     if (cell.d < 30 || cell.d > 95) continue;
     if (vnoise(cell.ci * 0.21 + 3.3, cell.cj * 0.21 + 7.7) < 0.6) continue;

@@ -7,11 +7,47 @@ export const CX = 5, CZ = 4;            // one farm plot = 5 x 4 terrain cells (
 export const T_PADDY = 1, T_VEG = 2, T_YARD = 3, T_FLOWER = 4;
 const HALF = TSIZE / 2;
 
+const inl_guard = (x, sh, d) => x > sh + 12 && d > 18;
+
 export class Terrain {
   constructor(track, level = {}) {
+    const n1 = (this.n1 = TN + 1);
     const opt = { farms: true, mountainFrom: 120, mountainTo: 620, roadDip: 0, ...(level.terrain || {}) };
     const lakes = (this.lakes = level.lakes || []);
-    const n1 = (this.n1 = TN + 1);
+    const sea = (this.sea = level.sea || null);
+    // Precompute the westernmost road X at each Z row so the ocean shoreline always stays seaward (-X) of the road,
+    // never creating a lagoon on the landward (+X) side!
+    let westRoad = null;
+    if (sea) {
+      westRoad = new Float32Array(n1).fill(sea.shoreX + 40);
+      for (let k = 0; k < track.N; k++) {
+        const rz = track.pz[k], rx = track.px[k];
+        const jCenter = Math.round((rz + HALF) / TCELL);
+        for (let dj = -14; dj <= 14; dj++) {
+          const jj = jCenter + dj;
+          if (jj < 0 || jj >= n1) continue;
+          const w = Math.abs(dj) * TCELL * 0.35;
+          westRoad[jj] = Math.min(westRoad[jj], rx + w);
+        }
+      }
+      // Smooth westRoad along Z so bays and headlands curve naturally
+      const tmp = new Float32Array(n1);
+      for (let pass = 0; pass < 8; pass++) {
+        for (let j = 0; j < n1; j++) {
+          tmp[j] = 0.25 * westRoad[Math.max(0, j - 1)] + 0.5 * westRoad[j] + 0.25 * westRoad[Math.min(n1 - 1, j + 1)];
+        }
+        westRoad.set(tmp);
+      }
+    }
+    const shoreAt = (z) => {
+      if (!sea) return -1e9;
+      const fz = clamp((z + HALF) / TCELL, 0, TN - 0.001), j = Math.floor(fz), t = fz - j;
+      const wr = westRoad[j] * (1 - t) + westRoad[j + 1] * t;
+      let wav = 0;
+      for (const [amp, freq, ph] of (sea.waves || [])) wav += amp * Math.sin(z * freq + ph);
+      return Math.min(wr - 22, sea.shoreX + wav);
+    };
+    this.shoreAt = shoreAt;
     const H = (this.H = new Float32Array(n1 * n1));
     const D = (this.D = new Float32Array(n1 * n1));
     const TH = new Float32Array(n1 * n1), IDX = new Int32Array(n1 * n1);
@@ -43,6 +79,7 @@ export class Terrain {
           dry = Math.min(dry, smoothstep(1.03, 1.45, q));
           if (q < 1.06) { wet = 1 - smoothstep(0.94, 1.06, q); bowl = L.level - 0.4 - L.depth * (1 - smoothstep(0.5, 1, q)); }
         }
+        if (sea) dry = Math.min(dry, smoothstep(-20, 290, x - shoreAt(z)));
         const m = Math.pow(smoothstep(opt.mountainFrom, opt.mountainTo, d), 1.4) * dry;
         const rid = ridged(x * 0.0016, z * 0.0016, 5);
         const big = fbm(x * 0.0007 + 5, z * 0.0007 + 9, 3);
@@ -51,9 +88,23 @@ export class Terrain {
         const h = th - 0.35 - opt.roadDip * (1 - smoothstep(4, 8, d))
           + smoothstep(16, 70, d) * (fbm(x * 0.01, z * 0.01, 4) - 0.5) * 5
           + m * (40 + 340 * (0.55 * rid + 0.45 * fbm(x * 0.003 + 2, z * 0.003 - 4, 4)) * (0.5 + big))
-          + smoothstep(800, 1500, r) * 230 * (0.5 + rid) * dry;
+          + smoothstep(800, 1500, r) * 230 * (0.5 + rid) * dry * smoothstep(28, 140, d);
+        let hOut = lerp(h, bowl, wet);
+        if (sea) {
+          const inl = x - shoreAt(z); // > 0 inland, < 0 out to sea
+          const seaFloor = sea.level - 0.45 - sea.depth * smoothstep(0, 190, -inl) - 0.04 * Math.max(0, -inl - 190);
+          const coastK = smoothstep(-26, 38, inl);
+          const roadKeep = 1 - smoothstep(12, 28, d);
+          hOut = lerp(seaFloor, hOut, Math.max(coastK, roadKeep));
+          // Rocky headland knoll under the lighthouse (kept strictly >18 m clear of the road)
+          if (sea.lighthouse && d > 18) {
+            const dl = Math.hypot(x - sea.lighthouse.x, z - sea.lighthouse.z);
+            if (dl < 72) hOut = Math.max(hOut, (sea.lighthouse.baseY || 30) * (1 - smoothstep(16, 68, dl)) * smoothstep(18, 30, d));
+          }
+        }
+        if (sea && inl_guard(x, shoreAt(z), d)) hOut = Math.max(hOut, sea.level + 0.85 + 0.018 * Math.max(0, x - shoreAt(z)));
         const o = j * n1 + i;
-        H[o] = lerp(h, bowl, wet); D[o] = d; TH[o] = th; IDX[o] = idx;
+        H[o] = hOut; D[o] = d; TH[o] = th; IDX[o] = idx;
       }
     }
 
@@ -96,6 +147,10 @@ export class Terrain {
   // The lake whose water covers (x, z), or null. `margin` > 1 also counts a strip of shore.
   lakeAt(x, z, margin = 1) {
     for (const L of this.lakes) if (Math.hypot((x - L.x) / L.a, (z - L.z) / L.b) < margin && this.heightAt(x, z) < L.level + (margin > 1 ? 1.2 : 0)) return L;
+    if (this.sea) {
+      const extra = (margin - 1) * 90;
+      if ((x < this.shoreAt(z) + extra || this.heightAt(x, z) < this.sea.level + (margin > 1 ? 1.5 : 0.05)) && this.heightAt(x, z) < this.sea.level + (margin > 1 ? 2.2 : 0.05)) return this.sea;
+    }
     return null;
   }
   distAt(x, z) { return this._bil(this.D, x, z); }
@@ -176,6 +231,20 @@ export class Terrain {
               col = mix(col, fc, inside);
             }
           }
+          ${this.sea ? `
+          // Sandy beach & wet surf zone near sea level on gentle slopes; steeper shores turn into weathered sea-cliff rock.
+          {
+            float seaH = wp.y - ${this.sea.level.toFixed(2)};
+            float flatK = 1. - smoothstep(.26, .52, slope);
+            float beach = (1. - smoothstep(-.8, 4.2 + 1.4 * n1, seaH)) * flatK * smoothstep(${(ROAD_HALF + 1.6).toFixed(2)}, ${(ROAD_HALF + 4.8).toFixed(2)}, vRoad);
+            vec3 drySand = mix(vec3(.44, .38, .28), vec3(.58, .51, .38), n2) * (.88 + .24 * n3);
+            float wetSand = 1. - smoothstep(-.2, 1.15, seaH);
+            vec3 sandCol = mix(drySand, drySand * vec3(.46, .44, .42), wetSand);
+            col = mix(col, sandCol, beach);
+            gRough = mix(gRough, mix(.88, .18, wetSand), beach);
+            float cliffBand = (1. - smoothstep(0., 22., seaH)) * smoothstep(.32, .55, slope);
+            col = mix(col, rock * vec3(.92, .94, .98), cliffBand * .75);
+          }` : ''}
           float gr = 1. - smoothstep(${(ROAD_HALF + 0.3).toFixed(2)}, ${(ROAD_HALF + 1.8).toFixed(2)}, vRoad);
           col = mix(col, vec3(.2, .18, .155) * (.7 + .6 * n3), gr);
           diffuseColor.rgb = col;

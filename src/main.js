@@ -143,13 +143,13 @@ async function build() {
   await tick('LOADING 3D MODELS', 46);
   if (Q.models !== 'off' && !params.has('nomodels')) await models.load(Q.models === 'lite' ? 1 : 0, (f) => { loadBar.style.width = 46 + f * 6 + '%'; });
   await tick('BUILDING VILLAGES', 52);
-  const props = buildProps(scene, track, terrain, colliders, models, Q);
+  const props = buildProps(scene, track, terrain, colliders, models, Q, LEVEL);
   await tick('FLOODING RICE PADDIES', 62);
   const tmat = terrain.buildMaterial(Q.lowq);
   scene.add(terrain.buildMesh(), buildShoulders(track, tmat), buildRoad(track), buildGuardrails(track));
   await tick('PLANTING SAKURA', 74);
   flora = buildFlora(scene, track, terrain, colliders, props, Q, models, LEVEL);
-  buildLakes(scene, LEVEL, terrain, models);
+  buildLakes(scene, LEVEL, terrain, models, colliders);
   await tick('TUNING ENGINES', 88);
   const world = { track, terrain, colliders };
   // REDUCED keeps the cheap procedural cars: the clustered LODs are meant for distance, not for the hero object

@@ -5,7 +5,7 @@ import { NOISE_TEX_GLSL, gNoise, gTime, fbm } from './util.js';
 // mid-afternoon. el/az are the sun's elevation and its bearing from the start straight, in degrees.
 const SKY = {
   el: 23, az: 32, sunColor: [1, 0.81, 0.6], sunIntensity: 7.5, hemi: 0.35, env: 0.85,
-  zenith: [0.085, 0.2, 0.5], horizon: [0.5, 0.5, 0.58], glow: [1.5, 0.82, 0.4],
+  zenith: [0.085, 0.2, 0.5], horizon: [0.5, 0.5, 0.58], glow: [1.5, 0.82, 0.4], openSea: false,
   cloudShade: [0.36, 0.31, 0.4], cloudLit: [1.55, 1.12, 0.78], fog: [0.6, 0.52, 0.5], fogDensity: 0.00042,
 };
 const rad = (d) => (d * Math.PI) / 180;
@@ -109,7 +109,14 @@ function buildBackdrop(start) {
     for (let i = 0; i <= SEG; i++) {
       const a = (i / SEG) * Math.PI * 2, cx = Math.cos(a), sz = Math.sin(a);
       const n = fbm(cx * L.f + L.o, sz * L.f - L.o, 6);
-      const hh = L.h * (0.25 + 1.5 * n);
+      // On coastal courses, drop the backdrop ridges below the ocean horizon on the seaward (-X) half, leaving a couple of distant island silhouettes.
+      let seaMask = 1;
+      if (SKY.openSea) {
+        const west = THREE.MathUtils.smoothstep(0.22, -0.22, cx);
+        const isle = L === layers[2] ? Math.max(0, Math.sin(a * 3.5 + 0.6) - 0.86) * 1.4 * (0.4 + 0.6 * n) : 0;
+        seaMask = 1 - west * (1 - isle);
+      }
+      const hh = L.h * (0.25 + 1.5 * n) * seaMask - (1 - seaMask) * 140;
       pos.push(cx * L.R, -120, sz * L.R, cx * L.R, hh, sz * L.R);
       col.push(...L.base, ...L.top);
       if (i < SEG) { const v = base + i * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); }
@@ -149,7 +156,9 @@ function buildBackdrop(start) {
   fg.setAttribute('color', new THREE.BufferAttribute(c, 3));
   const fuji = new THREE.Mesh(fg, mat);
   const fs = Math.sin(start.heading), fc = Math.cos(start.heading);
-  fuji.position.set(start.x + fs * 9000 - fc * 1300, -80, start.z + fc * 9000 + fs * 1300);
+  // Across the bay on the coastal course, ahead-left on inland courses.
+  if (SKY.openSea) fuji.position.set(-7200, -95, 5600);
+  else fuji.position.set(start.x + fs * 9000 - fc * 1300, -80, start.z + fc * 9000 + fs * 1300);
   g.add(fuji);
   return g;
 }
