@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// gemini-image-generated texture maps (public/textures/, sources and prompts in tools/generate_textures.sh).
+// AI-generated texture maps (public/textures/, sources and prompts in tools/generate_textures.sh).
 // Mirrored repeat makes any generated image tile without visible seams.
 const BASE = import.meta.env.BASE_URL + 'textures/';
 const loader = new THREE.TextureLoader(), cache = new Map();

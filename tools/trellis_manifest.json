@@ -2,7 +2,7 @@
   "style": "photorealistic real-world photograph reference of a single object, true-to-life proportions and scale, physically accurate natural materials with fine surface detail and subtle weathering, soft even overcast daylight, no harsh shadows, no ground plane, no people, isolated on a plain neutral light-grey studio background, entire object in frame, three-quarter view",
   "preset": "ultra",
   "output_dir": "../assets_src/models",
-  "image_model": "gemini-image-2-flash-lite-png",
+  "image_model": "gemini-3.1-flash-lite-image",
   "assets": [
     {
       "id": "car_red",

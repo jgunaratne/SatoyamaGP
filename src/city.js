@@ -484,7 +484,7 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}, model
 
   // 4. City blocks. The street walls and the towers behind them are TRELLIS.2 buildings generated from night-time
   //    concepts (lit windows and signs are in their textures; see nightGlow in models.js). The far skyline clusters,
-  //    and every building when models are off, are boxes skinned with gemini-image facade maps.
+  //    and every building when models are off, are boxes skinned with AI-generated facade maps.
   const M = (id) => (models ? models.get(id) : null);
   const kinds = (rows) => rows.map(([id, h0, h1, wt]) => ({ id, m: M(id), h0, h1, wt, list: [] })).filter((k) => k.m);
   const STREET = kinds([
@@ -534,7 +534,7 @@ export function buildCity(scene, track, terrain, colliders, level, q = {}, model
     }
   };
 
-  // Signs every street building can carry: a projecting neon blade (canvas-drawn, real Japanese) and a rooftop LED screen (gemini-image art).
+  // Signs every street building can carry: a projecting neon blade (canvas-drawn, real Japanese) and a rooftop LED screen (AI-generated art).
   const addSigns = (x, z, w, d, h, ry) => {
     const m4 = new THREE.Matrix4().makeRotationY(ry).setPosition(x, terrain.heightAt(x, z) - 0.25, z);
     if (rng() < 0.55) {

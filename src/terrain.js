@@ -258,7 +258,7 @@ export class Terrain {
           {
             float gx = abs(fract(wp.x / 64.) - .5) * 64., gz = abs(fract(wp.z / 64.) - .5) * 64.;
             float street = 1. - smoothstep(3.8, 4.6, min(gx, gz));
-            // gemini-image paving-slab texture for sidewalks and plazas, fading to its average tone in the distance
+            // AI-generated paving-slab texture for sidewalks and plazas, fading to its average tone in the distance
             vec3 slab = texture2D(uPave, wp.xz / 5.2).rgb;
             slab = mix(vec3(.2), slab, exp(-vd * .006));
             vec3 pave = slab * mix(.3, .46, n1) * (.9 + .2 * n3);

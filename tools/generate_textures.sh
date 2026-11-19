@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Generates the gemini-image texture maps for the city course into public/textures/city/*.webp.
+# Generates the AI-generated texture maps for the city course into public/textures/city/*.webp.
 # Images are generated into /tmp/satoyama_tex (kept, so a re-run only fills in what is missing), then cropped,
 # scaled and converted with ffmpeg. The game tiles them with mirrored repeat, so they need not be seamless.
 #   bash tools/generate_textures.sh
 set -u
-G=tools/genai.py
+GENAI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/genai.py"
+genai() { python3 "$GENAI" "$@"; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 D="${ROOT}/public/textures/city"
 mkdir -p /tmp/satoyama_tex "${D}"
-gen() { local n="$1"; shift; [ -s "/tmp/satoyama_tex/$n.png" ] && return; "$G" -prod -timeout=90s -output="/tmp/satoyama_tex/$n.png" image -model=gemini-image-2-flash-lite-png "$*" 2>&1 | grep -E "Successfully|rror" | tail -1; }
+gen() { local n="$1"; shift; [ -s "/tmp/satoyama_tex/$n.png" ] && return; genai image --timeout=90 --out="/tmp/satoyama_tex/$n.png" "$*" 2>&1 | grep -E "Successfully|rror" | tail -1; }
 FLAT="Seamless tileable texture, perfectly flat orthographic straight-on front elevation filling the entire frame edge to edge, no perspective, no sky, no ground, no building edges, no text, photorealistic, sharp."
 gen facade_glass "$FLAT Modern Tokyo glass curtain-wall office tower facade at night: a regular grid of 12 columns by 16 floors of rectangular office windows separated by slim dark aluminium mullions and dark spandrel bands, about sixty percent of the windows lit from inside in varied warm white and cool white with faint glimpses of ceilings, desks and blinds, the rest dark reflective glass." &
 gen facade_office "$FLAT Japanese mid-rise office building facade at night clad in pale grey ceramic tiles with eight floors of long horizontal ribbon windows in aluminium frames, about half of the windows lit warm white and cool white showing ceilings and blinds, the others dark, thin floor bands, subtle rain streaks." &
@@ -38,7 +39,7 @@ ffmpeg -i pavement.png -vf "crop=ih:ih:(iw-ih)/2:0,scale=512:512" $W "$D/pavemen
 ls -la "$D"
 
 # ---- road, lawn and far-skyline maps. The skylines are generated on chroma green and keyed to alpha.
-G2() { local n="$1"; shift; [ -s "/tmp/satoyama_tex/$n.png" ] || "$G" -prod -timeout=90s -output="/tmp/satoyama_tex/$n.png" image -model=gemini-image-2-flash-lite-png "$*" 2>&1 | grep -E "Successfully|rror" | tail -1; }
+G2() { local n="$1"; shift; [ -s "/tmp/satoyama_tex/$n.png" ] || genai image --timeout=90 --out="/tmp/satoyama_tex/$n.png" "$*" 2>&1 | grep -E "Successfully|rror" | tail -1; }
 KEY="Everything behind and above the buildings is a perfectly flat uniform pure chroma-key green (#00FF00) background with no sky, no clouds, no glow, no water, no reflection, no ground. Photorealistic, sharp"
 G2 asphalt "Top-down flat view of a rain-damp city road surface at night for a racing game ground texture: dark charcoal asphalt with fine stone aggregate, faint darker tar seams running lengthwise, slight sheen in shallow worn wheel tracks, tiny scattered lighter chips. Uniform coverage edge to edge, no painted lines, no objects, no perspective, even neutral lighting"
 G2 lawn "Seamless tileable texture, perfectly flat top-down orthographic photograph of a neatly mown city park lawn, short dense green grass with subtle mowing variation and a few clover patches, evenly lit overcast daylight, no shadows, no objects, no paths, photorealistic, sharp"

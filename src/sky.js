@@ -146,7 +146,7 @@ function buildBackdrop(start) {
   g.add(new THREE.Mesh(geo, mat));
 
   if (SKY.city) {
-    // The far metropolis: two rings of gemini-image night-skyline panoramas (keyed to alpha), mirrored around the horizon
+    // The far metropolis: two rings of AI-generated night-skyline panoramas (keyed to alpha), mirrored around the horizon
     // so they join without a seam. The nearer ring is taller; the farther one fills the gaps behind it.
     for (const [file, R, reps, aspect, y0, turn, tint] of [
       ['skyline_b', 3100, 11, 1584 / 289, -14, 0.21, 0.95], ['skyline_a', 2350, 8, 1584 / 316, -10, 0, 1.5],

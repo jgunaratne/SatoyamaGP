@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generates the Lyria 3 score into public/audio/music/<name>.mp3 (served at /audio/music/).
+# Generates the Lyria score into public/audio/music/<name>.mp3 (served at /audio/music/).
 #
 # Lyria decides the length of a full song itself, so each track is asked for the
 # longest form it will write and re-rolled up to TRIES times; the longest take wins.
@@ -9,7 +9,8 @@
 #   FORCE=1 bash tools/generate_music.sh    # re-roll everything
 #   MIN_SECONDS=200 TRIES=4 bash tools/generate_music.sh race1
 set -u
-G=tools/genai.py
+GENAI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/genai.py"
+genai() { python3 "$GENAI" "$@"; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${ROOT}/public/audio/music"
 TMP=/tmp/satoyama_music
@@ -35,7 +36,7 @@ gen() {
     take="${TMP}/${name}_${i}.mp3"
     if [ -n "${FORCE:-}" ] || [ ! -s "${take}" ]; then
       rm -f "${take}"
-      "$G" -prod -timeout=600s -output="${take}" music -model=lyria-3-full-song-mp3 "$* ${style}" 2>&1 \
+      genai music --timeout=600 --out="${take}" "$* ${style}" 2>&1 \
         | grep -E "Successfully|rror|denied|quota" | tail -2
     fi
     [ -s "${take}" ] || { echo "! ${name} take ${i} failed"; continue; }

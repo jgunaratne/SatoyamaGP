@@ -126,7 +126,7 @@ export class Track {
   }
 }
 
-// opt.urban: city expressway surface - a gemini-image asphalt map, crisper paint and a rain-damp sheen that picks up the sky.
+// opt.urban: city expressway surface - an AI-generated asphalt map, crisper paint and a rain-damp sheen that picks up the sky.
 export function buildRoad(track, opt = {}) {
   const { N, px, py, pz, lx, lz, ds } = track;
   const pos = new Float32Array((N + 1) * 6), uv = new Float32Array((N + 1) * 4), idx = [];
